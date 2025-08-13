@@ -1,15 +1,32 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
-const API_BASE = 'http://localhost:8000'
-
 function App() {
-  const [devices, setDevices] = useState([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const [streamingStatus, setStreamingStatus] = useState('')
+  const [devices, setDevices] = useState([])
   const [recordings, setRecordings] = useState([])
-  const [detectedDevices, setDetectedDevices] = useState({ mic: null, system: null })
-  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('Ready')
+  const [micIndex, setMicIndex] = useState(null)
+  const [systemIndex, setSystemIndex] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [audioLevels, setAudioLevels] = useState({ mic: 0, system: 0 })
+
+  const API_BASE = 'http://localhost:8000'
+
+  // Simulate audio levels animation
+  useEffect(() => {
+    if (isStreaming) {
+      const interval = setInterval(() => {
+        setAudioLevels({
+          mic: Math.random() * 100,
+          system: Math.random() * 100
+        })
+      }, 100)
+      return () => clearInterval(interval)
+    } else {
+      setAudioLevels({ mic: 0, system: 0 })
+    }
+  }, [isStreaming])
 
   // Fetch devices on component mount
   useEffect(() => {
@@ -22,13 +39,10 @@ function App() {
       const response = await fetch(`${API_BASE}/devices`)
       const data = await response.json()
       setDevices(data.devices || [])
-      setDetectedDevices({
-        mic: data.detected_mic_index,
-        system: data.detected_system_index
-      })
+      setMicIndex(data.detected_mic_index)
+      setSystemIndex(data.detected_system_index)
     } catch (error) {
       console.error('Failed to fetch devices:', error)
-      setStreamingStatus('Error: Could not connect to backend server')
     }
   }
 
@@ -43,7 +57,7 @@ function App() {
   }
 
   const startStreaming = async () => {
-    setLoading(true)
+    setIsLoading(true)
     try {
       const response = await fetch(`${API_BASE}/start`, {
         method: 'POST',
@@ -52,182 +66,184 @@ function App() {
       })
       
       if (response.ok) {
-        const data = await response.json()
         setIsStreaming(true)
-        setStreamingStatus(`Recording started - Mic: ${data.mic_index}, System: ${data.sys_index}`)
+        setStatus('Streaming Active')
       } else {
         const error = await response.json()
-        setStreamingStatus(`Error: ${error.detail}`)
+        setStatus(`Error: ${error.detail}`)
       }
     } catch (error) {
-      setStreamingStatus('Error: Could not start streaming')
-      console.error('Start streaming error:', error)
+      setStatus('Connection Failed')
+      console.error('Failed to start streaming:', error)
+    } finally {
+      setIsLoading(false)
     }
-    setLoading(false)
   }
 
   const stopStreaming = async () => {
-    setLoading(true)
+    setIsLoading(true)
     try {
-      const response = await fetch(`${API_BASE}/stop`, {
-        method: 'POST'
-      })
+      const response = await fetch(`${API_BASE}/stop`, { method: 'POST' })
       
       if (response.ok) {
-        const data = await response.json()
         setIsStreaming(false)
-        setStreamingStatus('Recording stopped')
-        // Refresh recordings list
-        fetchRecordings()
-        
-        if (data.recordings) {
-          setStreamingStatus(`Recording stopped. Saved files: ${Object.keys(data.recordings).join(', ')}`)
-        }
+        setStatus('Stream Stopped')
+        await fetchRecordings() // Refresh recordings
       }
     } catch (error) {
-      setStreamingStatus('Error: Could not stop streaming')
-      console.error('Stop streaming error:', error)
+      setStatus('Stop Failed')
+      console.error('Failed to stop streaming:', error)
+    } finally {
+      setIsLoading(false)
     }
-    setLoading(false)
   }
 
   const downloadRecording = (filename) => {
-    // Extract tag from filename (MIC_ or SYS_)
     const tag = filename.startsWith('MIC_') ? 'MIC' : 'SYS'
-    const downloadUrl = `${API_BASE}/download/${tag}`
-    
-    // Create a temporary link and click it
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    window.open(`${API_BASE}/download/${tag}`, '_blank')
   }
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>🎵 Audio Streaming & Recording App</h1>
-        <p>Record microphone and system audio simultaneously</p>
+      {/* Background Grid */}
+      <div className="grid-background"></div>
+      
+      {/* Header */}
+      <header className="header">
+        <div className="header-content">
+          <div className="logo">
+            <div className="logo-icon">🎵</div>
+            <h1>Phonolytics</h1>
+          </div>
+          <div className="status-panel">
+            <div className={`status-indicator ${isStreaming ? 'active' : 'inactive'}`}>
+              <div className="pulse"></div>
+              <span>{status}</span>
+            </div>
+          </div>
+        </div>
       </header>
 
+      {/* Main Content */}
       <main className="main-content">
-        {/* Status Section */}
-        <section className="status-section">
-          <h2>Status</h2>
-          <div className={`status-indicator ${isStreaming ? 'streaming' : 'stopped'}`}>
-            {isStreaming ? '🔴 Recording...' : '⚫ Stopped'}
-          </div>
-          {streamingStatus && (
-            <p className="status-message">{streamingStatus}</p>
-          )}
-        </section>
-
-        {/* Controls Section */}
-        <section className="controls-section">
-          <h2>Controls</h2>
-          <div className="button-group">
-            <button 
-              onClick={startStreaming} 
-              disabled={isStreaming || loading}
-              className="btn btn-start"
-            >
-              {loading ? 'Starting...' : '🎤 Start Recording'}
-            </button>
-            
-            <button 
-              onClick={stopStreaming} 
-              disabled={!isStreaming || loading}
-              className="btn btn-stop"
-            >
-              {loading ? 'Stopping...' : '⏹️ Stop Recording'}
-            </button>
-            
-            <button 
-              onClick={fetchRecordings}
-              className="btn btn-refresh"
-            >
-              🔄 Refresh Recordings
-            </button>
-          </div>
-        </section>
-
-        {/* Device Info Section */}
-        <section className="devices-section">
-          <h2>Detected Devices</h2>
-          <div className="device-info">
-            <div className="device-item">
-              <strong>🎤 Microphone:</strong> 
-              {detectedDevices.mic !== null ? (
-                <span className="device-found">
-                  Index {detectedDevices.mic} - {devices.find(d => d.index === detectedDevices.mic)?.name || 'Unknown'}
-                </span>
-              ) : (
-                <span className="device-not-found">Not detected</span>
-              )}
-            </div>
-            <div className="device-item">
-              <strong>🔊 System Audio:</strong> 
-              {detectedDevices.system !== null ? (
-                <span className="device-found">
-                  Index {detectedDevices.system} - {devices.find(d => d.index === detectedDevices.system)?.name || 'Unknown'}
-                </span>
-              ) : (
-                <span className="device-not-found">Not detected</span>
-              )}
+        {/* Control Panel */}
+        <section className="control-panel">
+          <div className="panel-header">
+            <h2>Audio Control Center</h2>
+            <div className="devices-info">
+              <span className="device-tag mic">MIC #{micIndex}</span>
+              <span className="device-tag system">SYS #{systemIndex}</span>
             </div>
           </div>
+
+          {/* Audio Visualizer */}
+          <div className="audio-visualizer">
+            <div className="channel">
+              <label>Microphone</label>
+              <div className="level-meter">
+                <div 
+                  className="level-fill mic" 
+                  style={{ width: `${audioLevels.mic}%` }}
+                ></div>
+              </div>
+              <span className="level-value">{Math.round(audioLevels.mic)}%</span>
+            </div>
+            <div className="channel">
+              <label>System Audio</label>
+              <div className="level-meter">
+                <div 
+                  className="level-fill system" 
+                  style={{ width: `${audioLevels.system}%` }}
+                ></div>
+              </div>
+              <span className="level-value">{Math.round(audioLevels.system)}%</span>
+            </div>
+          </div>
+
+          {/* Control Buttons */}
+          <div className="control-buttons">
+            <button 
+              className={`btn ${isStreaming ? 'btn-stop' : 'btn-start'}`}
+              onClick={isStreaming ? stopStreaming : startStreaming}
+              disabled={isLoading}
+            >
+              <span className="btn-icon">
+                {isLoading ? '⚡' : isStreaming ? '⏹' : '▶'}
+              </span>
+              <span className="btn-text">
+                {isLoading ? 'Processing...' : isStreaming ? 'Stop Recording' : 'Start Recording'}
+              </span>
+            </button>
+          </div>
         </section>
 
-        {/* Recordings Section */}
-        <section className="recordings-section">
-          <h2>📁 Saved Recordings ({recordings.length})</h2>
-          {recordings.length === 0 ? (
-            <p className="no-recordings">No recordings yet. Start recording to create audio files.</p>
-          ) : (
-            <div className="recordings-list">
-              {recordings.map((filename, index) => (
-                <div key={index} className="recording-item">
-                  <div className="recording-info">
-                    <span className="recording-name">{filename}</span>
-                    <span className="recording-type">
-                      {filename.startsWith('MIC_') ? '🎤 Microphone' : '🔊 System Audio'}
+        {/* Recordings Panel */}
+        <section className="recordings-panel">
+          <div className="panel-header">
+            <h2>Recordings Archive</h2>
+            <button className="btn-refresh" onClick={fetchRecordings}>
+              🔄
+            </button>
+          </div>
+          
+          <div className="recordings-grid">
+            {recordings.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">📁</div>
+                <p>No recordings yet</p>
+                <span>Start streaming to create your first recording</span>
+              </div>
+            ) : (
+              recordings.map((recording, index) => (
+                <div key={index} className="recording-card">
+                  <div className="recording-header">
+                    <span className={`recording-type ${recording.startsWith('MIC_') ? 'mic' : 'system'}`}>
+                      {recording.startsWith('MIC_') ? '🎤 Microphone' : '🔊 System'}
+                    </span>
+                    <span className="recording-time">
+                      {recording.replace(/^(MIC_|SYS_)/, '').replace('.wav', '')}
                     </span>
                   </div>
-                  <button 
-                    onClick={() => downloadRecording(filename)}
-                    className="btn btn-download"
-                  >
-                    📥 Download
-                  </button>
+                  <div className="recording-actions">
+                    <button 
+                      className="btn-download"
+                      onClick={() => downloadRecording(recording)}
+                    >
+                      ⬇ Download
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </section>
 
-        {/* All Devices Section (for debugging) */}
-        <details className="devices-details">
-          <summary>🔧 All Available Devices ({devices.length})</summary>
+        {/* Device Info Panel */}
+        <section className="device-panel">
+          <div className="panel-header">
+            <h2>Audio Devices</h2>
+          </div>
           <div className="devices-list">
-            {devices.map((device, index) => (
-              <div key={index} className="device-detail">
-                <strong>Index {device.index}:</strong> {device.name}
-                <br />
-                <small>
-                  Input Channels: {device.maxInputChannels}, 
-                  Sample Rate: {device.defaultSampleRate}Hz
-                </small>
+            {devices.slice(0, 6).map((device, index) => (
+              <div key={index} className="device-item">
+                <div className="device-info">
+                  <span className="device-name">{device.name}</span>
+                  <span className="device-details">
+                    {device.maxInputChannels} ch • {Math.round(device.defaultSampleRate)} Hz
+                  </span>
+                </div>
+                <div className={`device-status ${
+                  device.index === micIndex ? 'mic-active' : 
+                  device.index === systemIndex ? 'system-active' : 'inactive'
+                }`}>
+                  {device.index === micIndex ? '🎤' : 
+                   device.index === systemIndex ? '🔊' : '◯'}
+                </div>
               </div>
             ))}
           </div>
-        </details>
+        </section>
       </main>
-
-      <footer className="app-footer">
-        <p>Make sure the backend server is running on port 8000</p>
-      </footer>
     </div>
   )
 }
