@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
 function App() {
@@ -10,31 +10,11 @@ function App() {
   const [systemIndex, setSystemIndex] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [audioLevels, setAudioLevels] = useState({ mic: 0, system: 0 })
+  const [isElectron, setIsElectron] = useState(false)
 
   const API_BASE = 'http://localhost:8000'
 
-  // Simulate audio levels animation
-  useEffect(() => {
-    if (isStreaming) {
-      const interval = setInterval(() => {
-        setAudioLevels({
-          mic: Math.random() * 100,
-          system: Math.random() * 100
-        })
-      }, 100)
-      return () => clearInterval(interval)
-    } else {
-      setAudioLevels({ mic: 0, system: 0 })
-    }
-  }, [isStreaming])
-
-  // Fetch devices on component mount
-  useEffect(() => {
-    fetchDevices()
-    fetchRecordings()
-  }, [])
-
-  const fetchDevices = async () => {
+  const fetchDevices = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/devices`)
       const data = await response.json()
@@ -44,9 +24,9 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch devices:', error)
     }
-  }
+  }, [])
 
-  const fetchRecordings = async () => {
+  const fetchRecordings = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/recordings`)
       const data = await response.json()
@@ -54,9 +34,9 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch recordings:', error)
     }
-  }
+  }, [])
 
-  const startStreaming = async () => {
+  const startStreaming = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch(`${API_BASE}/start`, {
@@ -78,9 +58,9 @@ function App() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
-  const stopStreaming = async () => {
+  const stopStreaming = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch(`${API_BASE}/stop`, { method: 'POST' })
@@ -96,24 +76,77 @@ function App() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [fetchRecordings])
 
   const downloadRecording = (filename) => {
     const tag = filename.startsWith('MIC_') ? 'MIC' : 'SYS'
     window.open(`${API_BASE}/download/${tag}`, '_blank')
   }
 
+  useEffect(() => {
+    setIsElectron(window.electronAPI !== undefined)
+    
+    if (window.electronAPI) {
+      window.electronAPI.onMenuStartRecording(() => {
+        if (!isStreaming && !isLoading) {
+          startStreaming()
+        }
+      })
+      
+      window.electronAPI.onMenuStopRecording(() => {
+        if (isStreaming && !isLoading) {
+          stopStreaming()
+        }
+      })
+      
+      window.electronAPI.onMenuRefreshDevices(() => {
+        fetchDevices()
+      })
+      
+      window.electronAPI.onMenuNewRecording(() => {
+        if (!isStreaming && !isLoading) {
+          startStreaming()
+        }
+      })
+      
+      return () => {
+        window.electronAPI.removeAllListeners('menu-start-recording')
+        window.electronAPI.removeAllListeners('menu-stop-recording')
+        window.electronAPI.removeAllListeners('menu-refresh-devices')
+        window.electronAPI.removeAllListeners('menu-new-recording')
+      }
+    }
+  }, [isStreaming, isLoading, startStreaming, stopStreaming, fetchDevices])
+
+  useEffect(() => {
+    if (isStreaming) {
+      const interval = setInterval(() => {
+        setAudioLevels({
+          mic: Math.random() * 100,
+          system: Math.random() * 100
+        })
+      }, 100)
+      return () => clearInterval(interval)
+    } else {
+      setAudioLevels({ mic: 0, system: 0 })
+    }
+  }, [isStreaming])
+
+  useEffect(() => {
+    fetchDevices()
+    fetchRecordings()
+  }, [fetchDevices, fetchRecordings])
+
   return (
     <div className="app">
-      {/* Background Grid */}
       <div className="grid-background"></div>
       
-      {/* Header */}
       <header className="header">
         <div className="header-content">
           <div className="logo">
-            <div className="logo-icon">🎵</div>
+            <img src="./logo.svg" alt="Phonolytics" className="logo-icon" />
             <h1>Phonolytics</h1>
+            {isElectron && <span className="electron-badge">Desktop</span>}
           </div>
           <div className="status-panel">
             <div className={`status-indicator ${isStreaming ? 'active' : 'inactive'}`}>

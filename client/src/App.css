@@ -83,8 +83,18 @@ body {
 }
 
 .logo-icon {
-  font-size: 2rem;
+  width: 2rem;
+  height: 2rem;
   animation: float 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.5));
+}
+
+/* Keep the emoji fallback for when image doesn't load */
+.logo-icon:not(img) {
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @keyframes float {
@@ -100,6 +110,23 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.electron-badge {
+  background: linear-gradient(45deg, #00ff88, #00cc70);
+  color: #0a0a0a;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: 'Orbitron', monospace;
+  margin-left: 1rem;
+  animation: badgePulse 3s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+  50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(0, 255, 136, 0.6); }
 }
 
 .status-panel {

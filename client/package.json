@@ -1,13 +1,30 @@
 {
-  "name": "client",
+  "name": "phonolytics-desktop",
+  "productName": "Phonolytics",
+  "version": "1.0.0",
+  "description": "Advanced Audio Streaming & Recording Application",
+  "author": {
+    "name": "Shayan Zaheer",
+    "email": "shayanali124421@gmail.com"
+  },
+  "license": "MIT",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shayan-zaheer/Phonolytics-DesktopApp"
+  },
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false",
+    "electron-dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --publish=never --config.compression=store",
+    "build:portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --config.compression=store --config.forceCodeSigning=false"
   },
   "dependencies": {
     "react": "^19.1.1",
@@ -18,10 +35,58 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
-    "vite": "^7.1.2"
+    "vite": "^7.1.2",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.phonolytics.desktop",
+    "productName": "Phonolytics",
+    "forceCodeSigning": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "win": {
+      "target": "portable",
+      "icon": "public/logo.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/logo.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "public/logo.ico"
+    },
+    "portable": {
+      "artifactName": "Phonolytics-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "compression": "store",
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "beforeBuild": null,
+    "afterSign": null,
+    "afterAllArtifactBuild": null
   }
 }
