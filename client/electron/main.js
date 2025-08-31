@@ -1,8 +1,11 @@
 const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron')
 const path = require('path')
+const { spawn } = require('child_process')
+const fs = require('fs')
 const isDev = process.env.NODE_ENV === 'development'
 
 let mainWindow
+let pythonServer = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -48,6 +51,115 @@ function createWindow() {
   })
 
   setApplicationMenu()
+}
+
+// Server management functions
+function startPythonServer() {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('Starting Python server...')
+      
+      // Get the server path
+      let serverPath
+      if (isDev) {
+        // In development, server is in the project directory
+        serverPath = path.join(__dirname, '../../server')
+      } else {
+        // In production, server is in resources
+        const possiblePaths = [
+          path.join(process.resourcesPath, 'server'),
+          path.join(__dirname, '../server'),
+          path.join(__dirname, '../../server')
+        ]
+        
+        serverPath = possiblePaths.find(p => fs.existsSync(path.join(p, 'main.py')))
+        
+        if (!serverPath) {
+          console.error('Server directory not found')
+          reject(new Error('Server directory not found'))
+          return
+        }
+      }
+      
+      const serverScript = path.join(serverPath, 'main.py')
+      
+      if (!fs.existsSync(serverScript)) {
+        console.error('Server script not found:', serverScript)
+        reject(new Error('Server script not found'))
+        return
+      }
+      
+      console.log('Starting server from:', serverScript)
+      
+      // Start the Python server
+      pythonServer = spawn('python', [serverScript], {
+        cwd: serverPath,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+      
+      // Handle server output
+      pythonServer.stdout.on('data', (data) => {
+        console.log('Server stdout:', data.toString())
+      })
+      
+      pythonServer.stderr.on('data', (data) => {
+        console.log('Server stderr:', data.toString())
+      })
+      
+      pythonServer.on('error', (error) => {
+        console.error('Failed to start Python server:', error)
+        reject(error)
+      })
+      
+      pythonServer.on('close', (code) => {
+        console.log(`Python server process exited with code ${code}`)
+        pythonServer = null
+      })
+      
+      // Give the server a moment to start
+      setTimeout(() => {
+        if (pythonServer && !pythonServer.killed) {
+          console.log('Python server started successfully')
+          resolve()
+        } else {
+          reject(new Error('Server failed to start'))
+        }
+      }, 2000)
+      
+    } catch (error) {
+      console.error('Error starting Python server:', error)
+      reject(error)
+    }
+  })
+}
+
+function stopPythonServer() {
+  return new Promise((resolve) => {
+    if (pythonServer) {
+      console.log('Stopping Python server...')
+      
+      pythonServer.on('close', () => {
+        console.log('Python server stopped')
+        pythonServer = null
+        resolve()
+      })
+      
+      // Try graceful shutdown first
+      pythonServer.kill('SIGTERM')
+      
+      // Force kill after 5 seconds if still running
+      setTimeout(() => {
+        if (pythonServer && !pythonServer.killed) {
+          console.log('Force killing Python server')
+          pythonServer.kill('SIGKILL')
+          pythonServer = null
+        }
+        resolve()
+      }, 5000)
+    } else {
+      resolve()
+    }
+  })
 }
 
 function setApplicationMenu() {
@@ -216,8 +328,25 @@ function setApplicationMenu() {
 }
 
 // App event handlers
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow()
+  
+  // Start Python server
+  try {
+    await startPythonServer()
+    console.log('Python server started successfully')
+  } catch (error) {
+    console.error('Failed to start Python server:', error)
+    // Show error dialog to user
+    const { dialog } = require('electron')
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Server Error',
+      message: 'Failed to start Python server',
+      detail: 'The application requires Python and its dependencies to function properly. Please ensure Python is installed and try again.',
+      buttons: ['OK']
+    })
+  }
 
   app.on('activate', () => {
     // On macOS, re-create a window when the dock icon is clicked
@@ -227,9 +356,21 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  // Stop Python server when app is closing
+  await stopPythonServer()
+  
   // On macOS, keep the app running even when all windows are closed
   if (process.platform !== 'darwin') {
+    app.quit()
+  }
+})
+
+app.on('before-quit', async (event) => {
+  // Prevent quit until server is stopped
+  if (pythonServer) {
+    event.preventDefault()
+    await stopPythonServer()
     app.quit()
   }
 })
@@ -251,6 +392,23 @@ ipcMain.handle('show-message-box', async (event, options) => {
   const { dialog } = require('electron')
   const result = await dialog.showMessageBox(mainWindow, options)
   return result
+})
+
+ipcMain.handle('get-server-status', () => {
+  return {
+    running: pythonServer !== null && !pythonServer.killed,
+    pid: pythonServer ? pythonServer.pid : null
+  }
+})
+
+ipcMain.handle('restart-server', async () => {
+  try {
+    await stopPythonServer()
+    await startPythonServer()
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
 })
 
 // Handle app protocol (for deep linking if needed)

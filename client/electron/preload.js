@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog methods
   showMessageBox: (options) => ipcRenderer.invoke('show-message-box', options),
   
+  // Server management
+  getServerStatus: () => ipcRenderer.invoke('get-server-status'),
+  restartServer: () => ipcRenderer.invoke('restart-server'),
+  
   // Menu events listeners
   onMenuNewRecording: (callback) => ipcRenderer.on('menu-new-recording', callback),
   onMenuStartRecording: (callback) => ipcRenderer.on('menu-start-recording', callback),

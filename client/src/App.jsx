@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
+import ServerStatus from './ServerStatus'
 
 function App() {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -159,6 +160,9 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
+        {/* Server Status (only in Electron) */}
+        {isElectron && <ServerStatus />}
+        
         {/* Control Panel */}
         <section className="control-panel">
           <div className="panel-header">
