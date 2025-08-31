@@ -22,7 +22,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false",
+    "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false --config.nsis.allowToChangeInstallationDirectory=true",
     "electron-dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --publish=never --config.compression=store",
     "build:portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --config.compression=store --config.forceCodeSigning=false"
   },
@@ -55,13 +55,30 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "installer-scripts/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "installer-scripts/",
+        "to": "installer-scripts/",
+        "filter": ["**/*"]
+      }
     ],
     "extraMetadata": {
       "main": "electron/main.js"
     },
     "win": {
-      "target": "portable",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
       "icon": "public/logo.ico",
       "requestedExecutionLevel": "asInvoker"
     },
@@ -80,7 +97,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "include": "installer-scripts/installer.nsh",
+      "warningsAsErrors": false
     },
     "compression": "store",
     "nodeGypRebuild": false,
