@@ -11,6 +11,7 @@ import wave
 from datetime import datetime
 import os
 import uvicorn
+from streaming_utils import start_streaming,stop_streaming
 
 # ------------------------
 # DEFAULT AUDIO CONFIGURATION
@@ -24,9 +25,12 @@ DEFAULT_SERVER_WS_URL = "ws://127.0.0.1:8000/call/1/1/{}"
 # ------------------------
 # APP & LOGGER
 # ------------------------
+
 app = FastAPI(title="Audio Streamer API")
 logger = logging.getLogger("audio_streamer")
 logging.basicConfig(level=logging.INFO)
+
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -231,35 +235,14 @@ def api_list_devices():
 
 @app.post("/start")
 def api_start_streaming(req: StartRequest):
-    if state.get_streaming():
-        raise HTTPException(status_code=400, detail="Already streaming")
+    start_streaming()
+    return {"status": "started", "recordings": state.recording_files}
 
-    server_ws_url = req.server_ws_url or DEFAULT_SERVER_WS_URL
-    chunk = req.chunk or DEFAULT_CHUNK
-    channels = req.channels or DEFAULT_CHANNELS
-    rate = req.rate or DEFAULT_RATE
 
-    mic_idx, sys_idx = detect_default_indexes()
-    state.set_streaming(True)
-
-    t_mic = threading.Thread(target=stream_device, args=(mic_idx, "MIC", server_ws_url, chunk, channels, rate), daemon=True)
-    t_sys = threading.Thread(target=stream_device, args=(sys_idx, "SYS", server_ws_url, chunk, channels, rate), daemon=True)
-    state.threads = [t_mic, t_sys]
-    for t in state.threads:
-        t.start()
-
-    return {"status": "started", "mic_index": mic_idx, "sys_index": sys_idx}
 
 @app.post("/stop")
 def api_stop_streaming():
-    if not state.get_streaming():
-        return {"status": "not_streaming"}
-
-    state.set_streaming(False)
-    for t in state.threads:
-        if t.is_alive():
-            t.join(timeout=3)
-    state.threads = []
+    stop_streaming()
 
     return {"status": "stopped", "recordings": state.recording_files}
 
@@ -280,4 +263,4 @@ def api_list_recordings():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
