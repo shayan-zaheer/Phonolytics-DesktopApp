@@ -12,6 +12,8 @@ dist
 dist-ssr
 recordings
 *.local
+venv
+__pycache__
 
 # Editor directories and files
 .vscode/*
