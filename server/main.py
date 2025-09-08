@@ -1,17 +1,12 @@
 import threading
 import logging
 from typing import Optional
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import websocket
 import pyaudiowpatch as pyaudio
-import wave
-from datetime import datetime
-import os
 import uvicorn
-from streaming_utils import start_streaming,stop_streaming
+from streaming_utils import start_streaming, stop_streaming
 
 # ------------------------
 # DEFAULT AUDIO CONFIGURATION
@@ -20,7 +15,6 @@ DEFAULT_CHUNK = 1024
 DEFAULT_FORMAT = pyaudio.paInt16
 DEFAULT_CHANNELS = 2
 DEFAULT_RATE = 44100
-DEFAULT_SERVER_WS_URL = "ws://127.0.0.1:8000/call/1/1/{}"
 
 # ------------------------
 # APP & LOGGER
@@ -29,8 +23,6 @@ DEFAULT_SERVER_WS_URL = "ws://127.0.0.1:8000/call/1/1/{}"
 app = FastAPI(title="Audio Streamer API")
 logger = logging.getLogger("audio_streamer")
 logging.basicConfig(level=logging.INFO)
-
-
 
 # Add CORS middleware
 app.add_middleware(
@@ -41,44 +33,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create directory for recordings
-os.makedirs("recordings", exist_ok=True)
-
-# ------------------------
-# SERVER STATE
-# ------------------------
-class StreamState:
-    def __init__(self):
-        self.p = pyaudio.PyAudio()
-        self.is_streaming = False
-        self.threads = []
-        self.recording_files = {}  # {"MIC": filepath, "SYS": filepath}
-        self._lock = threading.Lock()
-
-    def set_streaming(self, value: bool):
-        with self._lock:
-            self.is_streaming = value
-
-    def get_streaming(self) -> bool:
-        with self._lock:
-            return self.is_streaming
-
-state = StreamState()
-
-# ------------------------
-# REQUEST MODELS
-# ------------------------
-class StartRequest(BaseModel):
-    server_ws_url: Optional[str] = DEFAULT_SERVER_WS_URL
-    chunk: Optional[int] = DEFAULT_CHUNK
-    channels: Optional[int] = DEFAULT_CHANNELS
-    rate: Optional[int] = DEFAULT_RATE
-
 # ------------------------
 # UTILITY: PRINT / LIST DEVICES
 # ------------------------
 def list_devices():
-    p = state.p
+    p = pyaudio.PyAudio()
     devices = []
     for i in range(p.get_device_count()):
         d = p.get_device_info_by_index(i)
@@ -88,10 +47,11 @@ def list_devices():
             "maxInputChannels": d.get("maxInputChannels"),
             "defaultSampleRate": d.get("defaultSampleRate"),
         })
+    p.terminate()
     return devices
 
 def detect_default_indexes():
-    p = state.p
+    p = pyaudio.PyAudio()
     mic_index = None
     sys_index = None
     
@@ -133,96 +93,8 @@ def detect_default_indexes():
         logger.error("Could not detect system audio: %s", e)
 
     logger.info("Final detection - Mic: %s, System: %s", mic_index, sys_index)
+    p.terminate()
     return mic_index, sys_index
-
-# ------------------------
-# STREAMING THREAD TARGET
-# ------------------------
-def stream_device(device_index: int, tag: str, server_ws_url: str, chunk: int, channels: int, rate: int):
-    if device_index is None:
-        logger.warning("[%s] No device found.", tag)
-        return
-
-    ws_url = server_ws_url.format(tag)
-    ws = websocket.WebSocket()
-    try:
-        ws.connect(ws_url, timeout=5)
-        logger.info("[%s] Connected to %s", tag, ws_url)
-    except Exception as e:
-        logger.error("[%s] WebSocket connection failed: %s", tag, e)
-        return
-
-    # Get device info and use its native sample rate for system audio
-    try:
-        device_info = state.p.get_device_info_by_index(device_index)
-        device_name = device_info.get("name", "Unknown")
-        native_rate = int(device_info.get("defaultSampleRate", rate))
-        
-        # Use native rate for system audio, default rate for microphone
-        actual_rate = native_rate if tag == "SYS" else rate
-        
-        logger.info("[%s] Device: %s, Using sample rate: %d Hz", tag, device_name, actual_rate)
-        
-        stream = state.p.open(
-            format=DEFAULT_FORMAT,
-            channels=channels,
-            rate=actual_rate,
-            input=True,
-            input_device_index=device_index,
-            frames_per_buffer=chunk
-        )
-        logger.info("[%s] Audio stream opened successfully", tag)
-        
-    except Exception as e:
-        logger.error("[%s] Failed to open audio stream: %s", tag, e)
-        ws.close()
-        return
-
-    # Create WAV file for saving
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filepath = os.path.join("recordings", f"{tag}_{timestamp}.wav")
-    wf = wave.open(filepath, "wb")
-    wf.setnchannels(channels)
-    wf.setsampwidth(state.p.get_sample_size(DEFAULT_FORMAT))
-    wf.setframerate(actual_rate)
-    state.recording_files[tag] = filepath
-
-    logger.info("[%s] Streaming & recording started -> %s", tag, filepath)
-
-    try:
-        while state.get_streaming():
-            try:
-                data = stream.read(chunk, exception_on_overflow=False)
-                ws.send(data, opcode=websocket.ABNF.OPCODE_BINARY)
-                wf.writeframes(data)  # save to file
-            except Exception as e:
-                logger.error("[%s] Error: %s", tag, e)
-                break
-    finally:
-        try:
-            stream.stop_stream()
-            stream.close()
-            wf.close()
-            ws.close()
-        except Exception:
-            pass
-        logger.info("[%s] Stopped.", tag)
-
-# ------------------------
-# WEBSOCKET ENDPOINTS
-# ------------------------
-@app.websocket("/call/{call_id}/{user_id}/{device_type}")
-async def websocket_endpoint(websocket: WebSocket, call_id: str, user_id: str, device_type: str):
-    await websocket.accept()
-    logger.info(f"WebSocket connected: /call/{call_id}/{user_id}/{device_type}")
-    try:
-        while True:
-            # Receive audio data
-            data = await websocket.receive_bytes()
-            # Log received data
-            logger.debug(f"Received {len(data)} bytes from {device_type}")
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: /call/{call_id}/{user_id}/{device_type}")
 
 # ------------------------
 # API ENDPOINTS
@@ -234,32 +106,14 @@ def api_list_devices():
     return {"devices": devices, "detected_mic_index": mic_idx, "detected_system_index": sys_idx}
 
 @app.post("/start")
-def api_start_streaming(req: StartRequest):
+def api_start_streaming():
     start_streaming()
-    return {"status": "started", "recordings": state.recording_files}
-
-
+    return {"status": "started"}
 
 @app.post("/stop")
 def api_stop_streaming():
     stop_streaming()
-
-    return {"status": "stopped", "recordings": state.recording_files}
-
-@app.get("/download/{tag}")
-def api_download_recording(tag: str):
-    tag = tag.upper()
-    if tag not in state.recording_files:
-        raise HTTPException(status_code=404, detail="No recording found for this tag")
-    filepath = state.recording_files[tag]
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="Recording file missing")
-    return FileResponse(filepath, filename=os.path.basename(filepath))
-
-@app.get("/recordings")
-def api_list_recordings():
-    files = [f for f in os.listdir("recordings") if f.endswith(".wav")]
-    return {"recordings": files}
+    return {"status": "stopped"}
 
 if __name__ == "__main__":
     import uvicorn

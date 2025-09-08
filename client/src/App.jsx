@@ -5,7 +5,6 @@ import ServerStatus from './ServerStatus'
 function App() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [devices, setDevices] = useState([])
-  const [recordings, setRecordings] = useState([])
   const [status, setStatus] = useState('Ready')
   const [micIndex, setMicIndex] = useState(null)
   const [systemIndex, setSystemIndex] = useState(null)
@@ -24,16 +23,6 @@ function App() {
       setSystemIndex(data.detected_system_index)
     } catch (error) {
       console.error('Failed to fetch devices:', error)
-    }
-  }, [])
-
-  const fetchRecordings = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_BASE}/recordings`)
-      const data = await response.json()
-      setRecordings(data.recordings || [])
-    } catch (error) {
-      console.error('Failed to fetch recordings:', error)
     }
   }, [])
 
@@ -65,11 +54,10 @@ function App() {
     setIsLoading(true)
     try {
       const response = await fetch(`${API_BASE}/stop`, { method: 'POST' })
-
+      
       if (response.ok) {
         setIsStreaming(false)
         setStatus('Stream Stopped')
-        await fetchRecordings() // Refresh recordings
       }
     } catch (error) {
       setStatus('Stop Failed')
@@ -77,12 +65,7 @@ function App() {
     } finally {
       setIsLoading(false)
     }
-  }, [fetchRecordings])
-
-  const downloadRecording = (filename) => {
-    const tag = filename.startsWith('MIC_') ? 'MIC' : 'SYS'
-    window.open(`${API_BASE}/download/${tag}`, '_blank')
-  }
+  }, [])
 
   useEffect(() => {
     setIsElectron(window.electronAPI !== undefined)
@@ -135,8 +118,7 @@ function App() {
 
   useEffect(() => {
     fetchDevices()
-    fetchRecordings()
-  }, [fetchDevices, fetchRecordings])
+  }, [fetchDevices])
 
   return (
     <div className="app">
@@ -215,46 +197,6 @@ function App() {
         </section>
 
         {/* Recordings Panel */}
-        <section className="recordings-panel">
-          <div className="panel-header">
-            <h2>Recordings Archive</h2>
-            <button className="btn-refresh" onClick={fetchRecordings}>
-              🔄
-            </button>
-          </div>
-
-          <div className="recordings-grid">
-            {recordings.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon">📁</div>
-                <p>No recordings yet</p>
-                <span>Start streaming to create your first recording</span>
-              </div>
-            ) : (
-              recordings.map((recording, index) => (
-                <div key={index} className="recording-card">
-                  <div className="recording-header">
-                    <span className={`recording-type ${recording.startsWith('MIC_') ? 'mic' : 'system'}`}>
-                      {recording.startsWith('MIC_') ? '🎤 Microphone' : '🔊 System'}
-                    </span>
-                    <span className="recording-time">
-                      {recording.replace(/^(MIC_|SYS_)/, '').replace('.wav', '')}
-                    </span>
-                  </div>
-                  <div className="recording-actions">
-                    <button
-                      className="btn-download"
-                      onClick={() => downloadRecording(recording)}
-                    >
-                      ⬇ Download
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
         {/* Device Info Panel */}
         <section className="device-panel">
           <div className="panel-header">

@@ -1,74 +1,25 @@
 ; Custom NSIS installer script for Phonolytics
-; This script checks for Python installation during setup
+; This script shows prerequisites checklist before installation
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 
-; Variables
-Var PythonFound
-Var InstallPython
+; Custom page for prerequisites checklist
+Page custom PrerequisitesPage
 
-; Function to check if Python is installed
-Function CheckPython
-    StrCpy $PythonFound "false"
+; Function to show prerequisites checklist
+Function PrerequisitesPage
+    MessageBox MB_YESNO|MB_ICONQUESTION "Phonolytics Prerequisites Checklist$\r$\n$\r$\nBefore installing, please ensure you have:$\r$\n$\r$\n✓ Python 3.8+ installed (from python.org)$\r$\n✓ Python added to system PATH$\r$\n✓ Administrative privileges$\r$\n✓ Internet connection available$\r$\n$\r$\nHave you verified all prerequisites above?" IDYES ContinueInstall IDNO CancelInstall
     
-    ; Check if python.exe is accessible
-    nsExec::ExecToStack 'python --version'
-    Pop $0 ; exit code
-    Pop $1 ; output
-    
-    ${If} $0 == 0
-        StrCpy $PythonFound "true"
-        DetailPrint "Python is already installed: $1"
-    ${Else}
-        DetailPrint "Python not found in system"
-    ${EndIf}
+    CancelInstall:
+        MessageBox MB_OK "Installation cancelled.$\r$\n$\r$\nTo install Phonolytics:$\r$\n1. Install Python from python.org$\r$\n2. Make sure to check 'Add Python to PATH'$\r$\n3. Run this installer again"
+        Abort
+        
+    ContinueInstall:
+        ; Continue with installation
 FunctionEnd
 
-; Function to ask user about Python installation
-Function AskPythonInstall
-    ${If} $PythonFound == "false"
-        MessageBox MB_YESNO "Python is required for Phonolytics to function. Python was not found on your system. Would you like to download Python after installation?" IDYES WantPython IDNO SkipPython
-        
-        WantPython:
-            StrCpy $InstallPython "true"
-            Goto PythonEnd
-            
-        SkipPython:
-            MessageBox MB_OK "Python installation was skipped. Phonolytics will not work without Python. Please install Python from python.org manually."
-            StrCpy $InstallPython "false"
-            Goto PythonEnd
-            
-        PythonEnd:
-    ${Else}
-        StrCpy $InstallPython "false"
-    ${EndIf}
-FunctionEnd
-
-; Function to install Python packages if Python is available
-Function InstallPackages
-    ${If} $PythonFound == "true"
-        DetailPrint "Installing required Python packages..."
-        
-        nsExec::ExecToLog 'python -m pip install --upgrade pip'
-        nsExec::ExecToLog 'python -m pip install fastapi uvicorn websocket-client pyaudiowpatch'
-        
-        DetailPrint "Python packages installation completed"
-    ${EndIf}
-FunctionEnd
-
-; Main installer section
-Section "Python Prerequisites Check" SEC01
-    Call CheckPython
-    Call AskPythonInstall
-    Call InstallPackages
-SectionEnd
-
-; Post-installation actions
+; Post-installation reminder
 Function .onInstSuccess
-    ${If} $InstallPython == "true"
-        DetailPrint "Opening Python download page..."
-        ExecShell "open" "https://www.python.org/downloads/"
-        MessageBox MB_OK "Python download page has been opened in your browser. Please download and install Python, then restart Phonolytics. Make sure to check Add Python to PATH during installation."
-    ${EndIf}
+    MessageBox MB_OK "Phonolytics installed successfully!$\r$\n$\r$\nIMPORTANT: Before using the app, run this command:$\r$\n$\r$\npip install fastapi uvicorn websocket-client pyaudiowpatch$\r$\n$\r$\nFor help and documentation:$\r$\nhttps://github.com/shayan-zaheer/Phonolytics-DesktopApp"
 FunctionEnd
