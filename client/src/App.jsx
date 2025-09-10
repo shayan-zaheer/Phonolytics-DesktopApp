@@ -13,7 +13,7 @@ function App() {
   const [audioLevels, setAudioLevels] = useState({ mic: 0, system: 0 })
   const [isElectron, setIsElectron] = useState(false)
 
-  const API_BASE = 'http://localhost:8000'
+  const API_BASE = 'http://localhost:8080'
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -45,7 +45,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       })
-      
+
       if (response.ok) {
         setIsStreaming(true)
         setStatus('Streaming Active')
@@ -65,7 +65,7 @@ function App() {
     setIsLoading(true)
     try {
       const response = await fetch(`${API_BASE}/stop`, { method: 'POST' })
-      
+
       if (response.ok) {
         setIsStreaming(false)
         setStatus('Stream Stopped')
@@ -86,30 +86,30 @@ function App() {
 
   useEffect(() => {
     setIsElectron(window.electronAPI !== undefined)
-    
+
     if (window.electronAPI) {
       window.electronAPI.onMenuStartRecording(() => {
         if (!isStreaming && !isLoading) {
           startStreaming()
         }
       })
-      
+
       window.electronAPI.onMenuStopRecording(() => {
         if (isStreaming && !isLoading) {
           stopStreaming()
         }
       })
-      
+
       window.electronAPI.onMenuRefreshDevices(() => {
         fetchDevices()
       })
-      
+
       window.electronAPI.onMenuNewRecording(() => {
         if (!isStreaming && !isLoading) {
           startStreaming()
         }
       })
-      
+
       return () => {
         window.electronAPI.removeAllListeners('menu-start-recording')
         window.electronAPI.removeAllListeners('menu-stop-recording')
@@ -141,7 +141,7 @@ function App() {
   return (
     <div className="app">
       <div className="grid-background"></div>
-      
+
       <header className="header">
         <div className="header-content">
           <div className="logo">
@@ -178,8 +178,8 @@ function App() {
             <div className="channel">
               <label>Microphone</label>
               <div className="level-meter">
-                <div 
-                  className="level-fill mic" 
+                <div
+                  className="level-fill mic"
                   style={{ width: `${audioLevels.mic}%` }}
                 ></div>
               </div>
@@ -188,8 +188,8 @@ function App() {
             <div className="channel">
               <label>System Audio</label>
               <div className="level-meter">
-                <div 
-                  className="level-fill system" 
+                <div
+                  className="level-fill system"
                   style={{ width: `${audioLevels.system}%` }}
                 ></div>
               </div>
@@ -199,7 +199,7 @@ function App() {
 
           {/* Control Buttons */}
           <div className="control-buttons">
-            <button 
+            <button
               className={`btn ${isStreaming ? 'btn-stop' : 'btn-start'}`}
               onClick={isStreaming ? stopStreaming : startStreaming}
               disabled={isLoading}
@@ -222,7 +222,7 @@ function App() {
               🔄
             </button>
           </div>
-          
+
           <div className="recordings-grid">
             {recordings.length === 0 ? (
               <div className="empty-state">
@@ -242,7 +242,7 @@ function App() {
                     </span>
                   </div>
                   <div className="recording-actions">
-                    <button 
+                    <button
                       className="btn-download"
                       onClick={() => downloadRecording(recording)}
                     >
@@ -269,12 +269,11 @@ function App() {
                     {device.maxInputChannels} ch • {Math.round(device.defaultSampleRate)} Hz
                   </span>
                 </div>
-                <div className={`device-status ${
-                  device.index === micIndex ? 'mic-active' : 
-                  device.index === systemIndex ? 'system-active' : 'inactive'
-                }`}>
-                  {device.index === micIndex ? '🎤' : 
-                   device.index === systemIndex ? '🔊' : '◯'}
+                <div className={`device-status ${device.index === micIndex ? 'mic-active' :
+                    device.index === systemIndex ? 'system-active' : 'inactive'
+                  }`}>
+                  {device.index === micIndex ? '🎤' :
+                    device.index === systemIndex ? '🔊' : '◯'}
                 </div>
               </div>
             ))}
