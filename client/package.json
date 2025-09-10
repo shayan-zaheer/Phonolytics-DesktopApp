@@ -2,7 +2,7 @@
   "name": "phonolytics-desktop",
   "productName": "Phonolytics",
   "version": "1.0.0",
-  "description": "Advanced Audio Streaming & Recording Application",
+  "description": "Advanced Audio Streaming Application",
   "author": {
     "name": "Shayan Zaheer",
     "email": "shayanali124421@gmail.com"
@@ -62,12 +62,16 @@
       {
         "from": "installer-scripts/",
         "to": "installer-scripts/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../server/",
         "to": "server/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "extraMetadata": {
@@ -77,11 +81,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/logo.ico",

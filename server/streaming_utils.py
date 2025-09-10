@@ -16,10 +16,6 @@ websockets = {}
 stream_threads = []
 is_streaming = False
 
-# GUI references (set externally when GUI created)
-start_button = None
-stop_button = None
-
 # ------------------------
 # AUDIO CONFIGURATION FOR YOUR SERVER
 # ------------------------
@@ -42,13 +38,6 @@ logger = logging.getLogger("audio_client")
 # ------------------------
 # DEVICE HANDLING
 # ------------------------
-def print_devices():
-    print("=== Available Audio Devices ===")
-    for i in range(p.get_device_count()):
-        d = p.get_device_info_by_index(i)
-        print(f"[{i}] {d.get('name')} | Channels: {d.get('maxInputChannels')} | Rate: {d.get('defaultSampleRate')}")
-    print("===============================")
-
 def get_devices():
     mic_index = None
     sys_index = None
@@ -267,7 +256,7 @@ def network_send_thread(tag):
 # STREAM CONTROL
 # ------------------------
 def start_streaming():
-    global is_streaming, stream_threads, start_button, stop_button
+    global is_streaming, stream_threads
     if is_streaming:
         return
         
@@ -292,7 +281,7 @@ def start_streaming():
     logger.info(f"Started streaming with {len(stream_threads)} threads")
 
 def stop_streaming():
-    global is_streaming, stream_threads, websockets, audio_queues, start_button, stop_button
+    global is_streaming, stream_threads, websockets, audio_queues
     if not is_streaming:
         return
         

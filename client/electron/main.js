@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
 const fs = require('fs')
@@ -39,6 +39,23 @@ function createWindow() {
     if (isDev) {
       mainWindow.focus()
     }
+
+    console.log('Auto-starting Python server...')
+    startPythonServer()
+      .then(() => {
+        console.log('Python server started automatically')
+        mainWindow.webContents.send('server-status-changed', { 
+          status: 'running', 
+          message: 'Server started successfully' 
+        })
+      })
+      .catch((error) => {
+        console.error('Failed to auto-start server:', error)
+        mainWindow.webContents.send('server-status-changed', { 
+          status: 'error', 
+          message: `Failed to start server: ${error.message}` 
+        })
+      })
   })
 
   mainWindow.on('closed', () => {
@@ -53,19 +70,15 @@ function createWindow() {
   setApplicationMenu()
 }
 
-// Server management functions
 function startPythonServer() {
   return new Promise((resolve, reject) => {
     try {
       console.log('Starting Python server...')
       
-      // Get the server path
       let serverPath
       if (isDev) {
-        // In development, server is in the project directory
         serverPath = path.join(__dirname, '../../server')
       } else {
-        // In production, server is in resources
         const possiblePaths = [
           path.join(process.resourcesPath, 'server'),
           path.join(__dirname, '../server'),
@@ -91,13 +104,11 @@ function startPythonServer() {
       
       console.log('Starting server from:', serverScript)
       
-      // Start the Python server
       pythonServer = spawn('python', [serverScript], {
         cwd: serverPath,
         stdio: ['pipe', 'pipe', 'pipe']
       })
       
-      // Handle server output
       pythonServer.stdout.on('data', (data) => {
         console.log('Server stdout:', data.toString())
       })
@@ -114,9 +125,15 @@ function startPythonServer() {
       pythonServer.on('close', (code) => {
         console.log(`Python server process exited with code ${code}`)
         pythonServer = null
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('server-status-changed', {
+            status: 'stopped',
+            message: `Server stopped (exit code: ${code})`
+          })
+        }
       })
       
-      // Give the server a moment to start
       setTimeout(() => {
         if (pythonServer && !pythonServer.killed) {
           console.log('Python server started successfully')
@@ -168,21 +185,6 @@ function setApplicationMenu() {
       label: 'File',
       submenu: [
         {
-          label: 'New Recording',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => {
-            mainWindow.webContents.send('menu-new-recording')
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Open Recordings Folder',
-          click: () => {
-            shell.openPath(path.join(__dirname, '../../server/recordings'))
-          }
-        },
-        { type: 'separator' },
-        {
           label: isDev ? 'Exit' : 'Quit Phonolytics',
           accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
           click: () => {
@@ -195,25 +197,17 @@ function setApplicationMenu() {
       label: 'Audio',
       submenu: [
         {
-          label: 'Start Recording',
+          label: 'Start Streaming',
           accelerator: 'CmdOrCtrl+R',
           click: () => {
             mainWindow.webContents.send('menu-start-recording')
           }
         },
         {
-          label: 'Stop Recording',
+          label: 'Stop Streaming',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
             mainWindow.webContents.send('menu-stop-recording')
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Refresh Devices',
-          accelerator: 'CmdOrCtrl+D',
-          click: () => {
-            mainWindow.webContents.send('menu-refresh-devices')
           }
         }
       ]
@@ -276,7 +270,7 @@ function setApplicationMenu() {
                 </head>
                 <body>
                   <h1>🎵 Phonolytics</h1>
-                  <p>Advanced Audio Streaming & Recording Application</p>
+                  <p>Advanced Audio Streaming Application</p>
                   <p class="version">Version 1.0.0</p>
                   <p>Built with Electron, React & FastAPI</p>
                 </body>
@@ -296,7 +290,6 @@ function setApplicationMenu() {
     }
   ]
 
-  // macOS specific menu adjustments
   if (process.platform === 'darwin') {
     template.unshift({
       label: app.getName(),
@@ -313,7 +306,6 @@ function setApplicationMenu() {
       ]
     })
 
-    // Window menu
     template[4].submenu = [
       { role: 'close' },
       { role: 'minimize' },
@@ -327,17 +319,14 @@ function setApplicationMenu() {
   Menu.setApplicationMenu(menu)
 }
 
-// App event handlers
 app.whenReady().then(async () => {
   createWindow()
   
-  // Start Python server
   try {
     await startPythonServer()
     console.log('Python server started successfully')
   } catch (error) {
     console.error('Failed to start Python server:', error)
-    // Show error dialog to user
     const { dialog } = require('electron')
     await dialog.showMessageBox(mainWindow, {
       type: 'error',
@@ -349,25 +338,30 @@ app.whenReady().then(async () => {
   }
 
   app.on('activate', () => {
-    // On macOS, re-create a window when the dock icon is clicked
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
 })
 
+app.on('before-quit', async (event) => {
+  if (pythonServer && !pythonServer.killed) {
+    event.preventDefault()
+    console.log('Stopping Python server before quit...')
+    await stopPythonServer()
+    app.quit()
+  }
+})
+
 app.on('window-all-closed', async () => {
-  // Stop Python server when app is closing
   await stopPythonServer()
   
-  // On macOS, keep the app running even when all windows are closed
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 app.on('before-quit', async (event) => {
-  // Prevent quit until server is stopped
   if (pythonServer) {
     event.preventDefault()
     await stopPythonServer()
@@ -375,7 +369,6 @@ app.on('before-quit', async (event) => {
   }
 })
 
-// Security: Prevent new window creation
 app.on('web-contents-created', (event, contents) => {
   contents.on('new-window', (event, navigationUrl) => {
     event.preventDefault()
@@ -383,7 +376,6 @@ app.on('web-contents-created', (event, contents) => {
   })
 })
 
-// IPC handlers for communication with renderer process
 ipcMain.handle('app-version', () => {
   return app.getVersion()
 })
@@ -394,22 +386,4 @@ ipcMain.handle('show-message-box', async (event, options) => {
   return result
 })
 
-ipcMain.handle('get-server-status', () => {
-  return {
-    running: pythonServer !== null && !pythonServer.killed,
-    pid: pythonServer ? pythonServer.pid : null
-  }
-})
-
-ipcMain.handle('restart-server', async () => {
-  try {
-    await stopPythonServer()
-    await startPythonServer()
-    return { success: true }
-  } catch (error) {
-    return { success: false, error: error.message }
-  }
-})
-
-// Handle app protocol (for deep linking if needed)
 app.setAsDefaultProtocolClient('phonolytics')
