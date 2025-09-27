@@ -6,6 +6,8 @@ function App() {
     const [isLoading, setIsLoading] = useState(false);
     const [audioLevels, setAudioLevels] = useState({ mic: 0, system: 0 });
     const [isElectron, setIsElectron] = useState(false);
+    const [serverError, setServerError] = useState(null);
+    const [serverStatus, setServerStatus] = useState('unknown');
 
     const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -63,9 +65,26 @@ function App() {
                 }
             });
 
+            // Listen for server errors
+            window.electronAPI.onServerError?.((error) => {
+                console.log('Server error received:', error);
+                setServerError(error);
+                if (error.type === 'dependency-error') {
+                    setServerStatus('dependency-error');
+                }
+            });
+
+            // Listen for server status changes
+            window.electronAPI.onServerStatusChanged?.((status) => {
+                console.log('Server status changed:', status);
+                setServerStatus(status.status);
+            });
+
             return () => {
-                window.electronAPI.removeAllListeners("menu-start-recording");
-                window.electronAPI.removeAllListeners("menu-stop-recording");
+                window.electronAPI.removeAllListeners?.("menu-start-recording");
+                window.electronAPI.removeAllListeners?.("menu-stop-recording");
+                window.electronAPI.removeAllListeners?.("server-error");
+                window.electronAPI.removeAllListeners?.("server-status-changed");
             };
         }
     }, [isStreaming, isLoading, startStreaming, stopStreaming]);
@@ -252,14 +271,29 @@ function App() {
                                     Low-latency audio processing with optimized
                                     buffer management
                                 </p>
+                                {serverError && serverError.type === 'dependency-error' && (
+                                    <div className="error-banner">
+                                        <h4>⚠️ Configuration Required</h4>
+                                        <p>{serverError.message}</p>
+                                        <p style={{ fontSize: '0.9em', color: '#ccc', marginTop: '10px' }}>
+                                            The Python audio processing engine is missing required components. 
+                                            Please reinstall Phonolytics to resolve this issue.
+                                        </p>
+                                    </div>
+                                )}
+                                
                                 <div className="info-status">
                                     <span
                                         className={`status-dot ${
+                                            serverError?.type === 'dependency-error' ? "error" :
+                                            serverStatus === 'stopped' ? "error" :
                                             isStreaming ? "active" : "ready"
                                         }`}
                                     ></span>
                                     <span>
-                                        {isStreaming ? "Active" : "Ready"}
+                                        {serverError?.type === 'dependency-error' ? "Configuration Error" :
+                                         serverStatus === 'stopped' ? "Server Stopped" :
+                                         isStreaming ? "Active" : "Ready"}
                                     </span>
                                 </div>
                             </div>

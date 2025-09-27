@@ -22,6 +22,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "setup-python": "powershell -ExecutionPolicy Bypass -File setup-python-runtime.ps1",
     "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false --config.nsis.allowToChangeInstallationDirectory=true",
     "electron-dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --publish=never --config.compression=store",
     "build:portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --config.compression=store --config.forceCodeSigning=false"
@@ -55,22 +56,14 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "node_modules/**/*",
-      "installer-scripts/**/*"
+      "node_modules/**/*"
     ],
     "extraResources": [
       {
-        "from": "installer-scripts/",
-        "to": "installer-scripts/",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../server/",
+        "from": "resources/server/",
         "to": "server/",
         "filter": [
-          "**/*"
+          "server.exe"
         ]
       }
     ],
@@ -111,7 +104,6 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "include": "installer-scripts/installer.nsh",
       "warningsAsErrors": false
     },
     "compression": "store",

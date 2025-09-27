@@ -1,3 +1,8 @@
+import sys
+import os
+# Add current directory to Python path to fix imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import threading
 import logging
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect

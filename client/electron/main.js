@@ -5,171 +5,90 @@ const fs = require('fs')
 const isDev = process.env.NODE_ENV === 'development'
 
 let mainWindow
-let pythonServer = null
+let serverProcess = null
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1000,
-    minHeight: 700,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
-    },
-    icon: path.join(__dirname, '../public/logo.ico'),
-    show: false,
-    titleBarStyle: 'default',
-    frame: true,
-    backgroundColor: '#0a0a0a'
-  })
-
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+// API Configuration for local server
+const API_CONFIG = {
+  BASE_URL: 'http://localhost:8000',
+  ENDPOINTS: {
+    HEALTH: '/health',
+    START_STREAM: '/start-streaming',
+    STOP_STREAM: '/stop-streaming',
+    DEVICES: '/devices',
+    WEBSOCKET: '/ws'
   }
+}
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show()
+// Function to start the server executable
+function startServerProcess() {
+  console.log('Starting server process...')
+  
+  // Path to server executable
+  const serverExePath = isDev 
+    ? path.join(__dirname, '../resources/server/server.exe')
+    : path.join(process.resourcesPath, 'server', 'server.exe')
+  
+  console.log('Server executable path:', serverExePath)
+  
+  if (!fs.existsSync(serverExePath)) {
+    console.error('Server executable not found at:', serverExePath)
+    return false
+  }
+  
+  try {
+    serverProcess = spawn(serverExePath, [], {
+      cwd: path.dirname(serverExePath),
+      detached: false,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
     
-    if (isDev) {
-      mainWindow.focus()
-    }
-
-    console.log('Auto-starting Python server...')
-    startPythonServer()
-      .then(() => {
-        console.log('Python server started automatically')
-        mainWindow.webContents.send('server-status-changed', { 
-          status: 'running', 
-          message: 'Server started successfully' 
-        })
-      })
-      .catch((error) => {
-        console.error('Failed to auto-start server:', error)
-        mainWindow.webContents.send('server-status-changed', { 
-          status: 'error', 
-          message: `Failed to start server: ${error.message}` 
-        })
-      })
-  })
-
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  setApplicationMenu()
+    serverProcess.stdout.on('data', (data) => {
+      console.log('SERVER:', data.toString())
+    })
+    
+    serverProcess.stderr.on('data', (data) => {
+      console.error('SERVER ERROR:', data.toString())
+    })
+    
+    serverProcess.on('close', (code) => {
+      console.log(`Server process exited with code ${code}`)
+      serverProcess = null
+    })
+    
+    serverProcess.on('error', (error) => {
+      console.error('Server process error:', error)
+      serverProcess = null
+    })
+    
+    console.log('Server process started successfully')
+    return true
+    
+  } catch (error) {
+    console.error('Failed to start server process:', error)
+    return false
+  }
 }
 
-function startPythonServer() {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('Starting Python server...')
-      
-      let serverPath
-      if (isDev) {
-        serverPath = path.join(__dirname, '../../server')
-      } else {
-        const possiblePaths = [
-          path.join(process.resourcesPath, 'server'),
-          path.join(__dirname, '../server'),
-          path.join(__dirname, '../../server')
-        ]
-        
-        serverPath = possiblePaths.find(p => fs.existsSync(path.join(p, 'main.py')))
-        
-        if (!serverPath) {
-          console.error('Server directory not found')
-          reject(new Error('Server directory not found'))
-          return
-        }
-      }
-      
-      const serverScript = path.join(serverPath, 'main.py')
-      
-      if (!fs.existsSync(serverScript)) {
-        console.error('Server script not found:', serverScript)
-        reject(new Error('Server script not found'))
-        return
-      }
-      
-      console.log('Starting server from:', serverScript)
-      
-      pythonServer = spawn('python', [serverScript], {
-        cwd: serverPath,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-      
-      pythonServer.stdout.on('data', (data) => {
-        console.log('Server stdout:', data.toString())
-      })
-      
-      pythonServer.stderr.on('data', (data) => {
-        console.log('Server stderr:', data.toString())
-      })
-      
-      pythonServer.on('error', (error) => {
-        console.error('Failed to start Python server:', error)
-        reject(error)
-      })
-      
-      pythonServer.on('close', (code) => {
-        console.log(`Python server process exited with code ${code}`)
-        pythonServer = null
-        
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('server-status-changed', {
-            status: 'stopped',
-            message: `Server stopped (exit code: ${code})`
-          })
-        }
-      })
-      
-      setTimeout(() => {
-        if (pythonServer && !pythonServer.killed) {
-          console.log('Python server started successfully')
-          resolve()
-        } else {
-          reject(new Error('Server failed to start'))
-        }
-      }, 2000)
-      
-    } catch (error) {
-      console.error('Error starting Python server:', error)
-      reject(error)
-    }
-  })
-}
-
-function stopPythonServer() {
+// Function to stop the server process
+function stopServerProcess() {
   return new Promise((resolve) => {
-    if (pythonServer) {
-      console.log('Stopping Python server...')
+    if (serverProcess) {
+      console.log('Stopping server process...')
       
-      pythonServer.on('close', () => {
-        console.log('Python server stopped')
-        pythonServer = null
+      serverProcess.on('close', () => {
+        console.log('Server process stopped')
+        serverProcess = null
         resolve()
       })
       
-      // Try graceful shutdown first
-      pythonServer.kill('SIGTERM')
+      serverProcess.kill('SIGTERM')
       
-      // Force kill after 5 seconds if still running
+      // Force kill after 5 seconds if graceful shutdown fails
       setTimeout(() => {
-        if (pythonServer && !pythonServer.killed) {
-          console.log('Force killing Python server')
-          pythonServer.kill('SIGKILL')
-          pythonServer = null
+        if (serverProcess && !serverProcess.killed) {
+          console.log('Force killing server process')
+          serverProcess.kill('SIGKILL')
+          serverProcess = null
         }
         resolve()
       }, 5000)
@@ -179,35 +98,101 @@ function stopPythonServer() {
   })
 }
 
-function setApplicationMenu() {
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      enableRemoteModule: false,
+      nodeIntegration: false
+    },
+    show: false,
+    icon: path.join(__dirname, '../public/logo.ico')
+  })
+
+  // Load the app
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173')
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+  }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+  })
+
+  // Handle window closed
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+}
+
+// Handle API requests from renderer
+ipcMain.handle('api-request', async (event, { endpoint, method = 'GET', data }) => {
+  try {
+    const url = `${API_CONFIG.BASE_URL}${endpoint}`
+    console.log(`API Request: ${method} ${url}`)
+    
+    const fetch = require('electron').net.request || require('https').request
+    
+    const options = {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+    
+    if (method !== 'GET' && data) {
+      options.body = JSON.stringify(data)
+    }
+
+    const response = await fetch(url, options)
+    const result = await response.json()
+    
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('API Request failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Handle window controls
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize()
+})
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
+    }
+  }
+})
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) mainWindow.close()
+})
+
+// Handle external links
+ipcMain.handle('open-external', (event, url) => {
+  shell.openExternal(url)
+})
+
+// Create menu
+function createMenu() {
   const template = [
     {
       label: 'File',
       submenu: [
         {
-          label: isDev ? 'Exit' : 'Quit Phonolytics',
+          label: 'Exit',
           accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
           click: () => {
             app.quit()
-          }
-        }
-      ]
-    },
-    {
-      label: 'Audio',
-      submenu: [
-        {
-          label: 'Start Streaming',
-          accelerator: 'CmdOrCtrl+R',
-          click: () => {
-            mainWindow.webContents.send('menu-start-recording')
-          }
-        },
-        {
-          label: 'Stop Streaming',
-          accelerator: 'CmdOrCtrl+S',
-          click: () => {
-            mainWindow.webContents.send('menu-stop-recording')
           }
         }
       ]
@@ -232,110 +217,22 @@ function setApplicationMenu() {
         { role: 'minimize' },
         { role: 'close' }
       ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'About Phonolytics',
-          click: () => {
-            const aboutWindow = new BrowserWindow({
-              width: 400,
-              height: 300,
-              modal: true,
-              parent: mainWindow,
-              webPreferences: {
-                nodeIntegration: false,
-                contextIsolation: true
-              }
-            })
-            
-            aboutWindow.loadURL(`data:text/html;charset=utf-8,
-              <html>
-                <head>
-                  <title>About Phonolytics</title>
-                  <style>
-                    body { 
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                      background: #0a0a0a;
-                      color: #ffffff;
-                      text-align: center;
-                      padding: 50px;
-                      margin: 0;
-                    }
-                    h1 { color: #00d4ff; font-size: 24px; margin-bottom: 10px; }
-                    p { margin: 10px 0; }
-                    .version { color: #a0a0a0; font-size: 14px; }
-                  </style>
-                </head>
-                <body>
-                  <h1>🎵 Phonolytics</h1>
-                  <p>Advanced Audio Streaming Application</p>
-                  <p class="version">Version 1.0.0</p>
-                  <p>Built with Electron, React & FastAPI</p>
-                </body>
-              </html>
-            `)
-            
-            aboutWindow.setMenuBarVisibility(false)
-          }
-        },
-        {
-          label: 'Learn More',
-          click: () => {
-            shell.openExternal('https://github.com/shayan-zaheer/Phonolytics-DesktopApp')
-          }
-        }
-      ]
     }
   ]
-
-  if (process.platform === 'darwin') {
-    template.unshift({
-      label: app.getName(),
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    })
-
-    template[4].submenu = [
-      { role: 'close' },
-      { role: 'minimize' },
-      { role: 'zoom' },
-      { type: 'separator' },
-      { role: 'front' }
-    ]
-  }
 
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
 }
 
 app.whenReady().then(async () => {
+  // Start the server process first
+  startServerProcess()
+  
+  // Create the main window
   createWindow()
   
-  try {
-    await startPythonServer()
-    console.log('Python server started successfully')
-  } catch (error) {
-    console.error('Failed to start Python server:', error)
-    const { dialog } = require('electron')
-    await dialog.showMessageBox(mainWindow, {
-      type: 'error',
-      title: 'Server Error',
-      message: 'Failed to start Python server',
-      detail: 'The application requires Python and its dependencies to function properly. Please ensure Python is installed and try again.',
-      buttons: ['OK']
-    })
-  }
+  // Create menu
+  createMenu()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -345,45 +242,23 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', async (event) => {
-  if (pythonServer && !pythonServer.killed) {
+  if (serverProcess && !serverProcess.killed) {
     event.preventDefault()
-    console.log('Stopping Python server before quit...')
-    await stopPythonServer()
+    console.log('Stopping server before quit...')
+    await stopServerProcess()
     app.quit()
   }
 })
 
-app.on('window-all-closed', async () => {
-  await stopPythonServer()
-  
+app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-app.on('before-quit', async (event) => {
-  if (pythonServer) {
-    event.preventDefault()
-    await stopPythonServer()
-    app.quit()
-  }
-})
-
-app.on('web-contents-created', (event, contents) => {
-  contents.on('new-window', (event, navigationUrl) => {
-    event.preventDefault()
-    shell.openExternal(navigationUrl)
-  })
-})
-
-ipcMain.handle('app-version', () => {
-  return app.getVersion()
-})
-
-ipcMain.handle('show-message-box', async (event, options) => {
+// Handle app errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error)
   const { dialog } = require('electron')
-  const result = await dialog.showMessageBox(mainWindow, options)
-  return result
+  dialog.showErrorBox('Unexpected Error', error.message)
 })
-
-app.setAsDefaultProtocolClient('phonolytics')

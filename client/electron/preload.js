@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMenuStartRecording: (callback) => ipcRenderer.on('menu-start-recording', callback),
   onMenuStopRecording: (callback) => ipcRenderer.on('menu-stop-recording', callback),
   
+  onServerError: (callback) => ipcRenderer.on('server-error', callback),
+  onServerStatusChanged: (callback) => ipcRenderer.on('server-status-changed', callback),
+  
   // Remove listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
   
