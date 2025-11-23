@@ -23,10 +23,10 @@ function App() {
             if (response.ok) {
                 setIsStreaming(true);
             } else {
-                console.error("Failed to start streaming");
+                console.error("Failed to start call");
             }
         } catch (error) {
-            console.error("Failed to connect to server:", error);
+            console.error("Failed to connect:", error);
         } finally {
             setIsLoading(false);
         }
@@ -43,7 +43,7 @@ function App() {
                 setIsStreaming(false);
             }
         } catch (error) {
-            console.error("Failed to stop streaming:", error);
+            console.error("Failed to end call:", error);
         } finally {
             setIsLoading(false);
         }
@@ -65,18 +65,16 @@ function App() {
                 }
             });
 
-            // Listen for server errors
             window.electronAPI.onServerError?.((error) => {
-                console.log('Server error received:', error);
+                console.log('Error received:', error);
                 setServerError(error);
                 if (error.type === 'dependency-error') {
                     setServerStatus('dependency-error');
                 }
             });
 
-            // Listen for server status changes
             window.electronAPI.onServerStatusChanged?.((status) => {
-                console.log('Server status changed:', status);
+                console.log('Status changed:', status);
                 setServerStatus(status.status);
             });
 
@@ -110,25 +108,15 @@ function App() {
             <header className="header">
                 <div className="header-content">
                     <div className="logo">
-                        <img
-                            src="./logo.svg"
-                            alt="Phonolytics"
-                            className="logo-icon"
-                        />
+                        <img src="./logo.svg" alt="Phonolytics" className="logo-icon" />
                         <h1>Phonolytics</h1>
-                        {isElectron && (
-                            <span className="electron-badge">Desktop</span>
-                        )}
+                        {isElectron && <span className="electron-badge">Desktop</span>}
                     </div>
                     <div className="status-panel">
-                        <div
-                            className={`status-indicator ${
-                                isStreaming ? "active" : "inactive"
-                            }`}
-                        >
+                        <div className={`status-indicator ${isStreaming ? "active" : "inactive"}`}>
                             <div className="pulse"></div>
                             <span>
-                                {isStreaming ? "Streaming Active" : "Ready"}
+                                {isStreaming ? "Call in Progress" : "Ready to Start"}
                             </span>
                         </div>
                     </div>
@@ -138,10 +126,9 @@ function App() {
             <main className="main-content">
                 <section className="control-panel">
                     <div className="panel-header">
-                        <h2>Audio Streaming Control</h2>
+                        <h2>Call Controls</h2>
                         <p className="panel-description">
-                            Stream audio from your microphone and system audio
-                            in real-time
+                            Manage your microphone and system audio during the call.
                         </p>
                     </div>
 
@@ -154,10 +141,9 @@ function App() {
                                     style={{ width: `${audioLevels.mic}%` }}
                                 ></div>
                             </div>
-                            <span className="level-value">
-                                {Math.round(audioLevels.mic)}%
-                            </span>
+                            <span className="level-value">{Math.round(audioLevels.mic)}%</span>
                         </div>
+
                         <div className="channel">
                             <label>System Audio</label>
                             <div className="level-meter">
@@ -166,20 +152,14 @@ function App() {
                                     style={{ width: `${audioLevels.system}%` }}
                                 ></div>
                             </div>
-                            <span className="level-value">
-                                {Math.round(audioLevels.system)}%
-                            </span>
+                            <span className="level-value">{Math.round(audioLevels.system)}%</span>
                         </div>
                     </div>
 
                     <div className="control-buttons">
                         <button
-                            className={`btn ${
-                                isStreaming ? "btn-stop" : "btn-start"
-                            }`}
-                            onClick={
-                                isStreaming ? stopStreaming : startStreaming
-                            }
+                            className={`btn ${isStreaming ? "btn-stop" : "btn-start"}`}
+                            onClick={isStreaming ? stopStreaming : startStreaming}
                             disabled={isLoading}
                         >
                             <span className="btn-icon">
@@ -189,8 +169,8 @@ function App() {
                                 {isLoading
                                     ? "Processing..."
                                     : isStreaming
-                                    ? "Stop Audio Stream"
-                                    : "Start Audio Stream"}
+                                    ? "End Call"
+                                    : "Start Call"}
                             </span>
                         </button>
                     </div>
@@ -198,106 +178,89 @@ function App() {
 
                 <section className="info-panel">
                     <div className="panel-header">
-                        <h2>Streaming Information</h2>
+                        <h2>Call Information</h2>
                     </div>
+
                     <div className="info-grid">
+
                         <div className="info-card">
                             <div className="info-icon">🎤</div>
                             <div className="info-content">
-                                <h3>Microphone Audio</h3>
-                                <p>
-                                    Captures audio from your default microphone
-                                    device for real-time streaming
-                                </p>
+                                <h3>Microphone</h3>
+                                <p>Your voice is being captured through the microphone.</p>
                                 <div className="info-status">
-                                    <span
-                                        className={`status-dot ${
-                                            isStreaming ? "active" : "inactive"
-                                        }`}
-                                    ></span>
-                                    <span>
-                                        {isStreaming ? "Streaming" : "Standby"}
-                                    </span>
+                                    <span className={`status-dot ${isStreaming ? "active" : "inactive"}`}></span>
+                                    <span>{isStreaming ? "Live" : "Idle"}</span>
                                 </div>
                             </div>
                         </div>
+
                         <div className="info-card">
                             <div className="info-icon">🔊</div>
                             <div className="info-content">
                                 <h3>System Audio</h3>
-                                <p>
-                                    Captures system audio output for
-                                    comprehensive audio streaming
-                                </p>
+                                <p>Your computer’s audio is being shared during the call.</p>
                                 <div className="info-status">
-                                    <span
-                                        className={`status-dot ${
-                                            isStreaming ? "active" : "inactive"
-                                        }`}
-                                    ></span>
-                                    <span>
-                                        {isStreaming ? "Streaming" : "Standby"}
-                                    </span>
+                                    <span className={`status-dot ${isStreaming ? "active" : "inactive"}`}></span>
+                                    <span>{isStreaming ? "Live" : "Idle"}</span>
                                 </div>
                             </div>
                         </div>
+
                         <div className="info-card">
                             <div className="info-icon">🌐</div>
                             <div className="info-content">
-                                <h3>Network Stream</h3>
-                                <p>
-                                    Real-time audio data transmission to
-                                    connected endpoints
-                                </p>
+                                <h3>Connection</h3>
+                                <p>Your audio is being sent through an active connection.</p>
                                 <div className="info-status">
-                                    <span
-                                        className={`status-dot ${
-                                            isStreaming ? "active" : "inactive"
-                                        }`}
-                                    ></span>
-                                    <span>
-                                        {isStreaming
-                                            ? "Connected"
-                                            : "Disconnected"}
-                                    </span>
+                                    <span className={`status-dot ${isStreaming ? "active" : "inactive"}`}></span>
+                                    <span>{isStreaming ? "Connected" : "Not Connected"}</span>
                                 </div>
                             </div>
                         </div>
+
                         <div className="info-card">
                             <div className="info-icon">⚡</div>
                             <div className="info-content">
                                 <h3>Performance</h3>
-                                <p>
-                                    Low-latency audio processing with optimized
-                                    buffer management
-                                </p>
+                                <p>Smooth, real-time audio handling for clear call quality.</p>
+
                                 {serverError && serverError.type === 'dependency-error' && (
                                     <div className="error-banner">
-                                        <h4>⚠️ Configuration Required</h4>
+                                        <h4>⚠️ Setup Required</h4>
                                         <p>{serverError.message}</p>
                                         <p style={{ fontSize: '0.9em', color: '#ccc', marginTop: '10px' }}>
-                                            The Python audio processing engine is missing required components. 
-                                            Please reinstall Phonolytics to resolve this issue.
+                                            Some components needed for audio calls are missing.
+                                            Please reinstall Phonolytics to fix this issue.
                                         </p>
                                     </div>
                                 )}
-                                
+
                                 <div className="info-status">
                                     <span
                                         className={`status-dot ${
-                                            serverError?.type === 'dependency-error' ? "error" :
-                                            serverStatus === 'stopped' ? "error" :
-                                            isStreaming ? "active" : "ready"
+                                            serverError?.type === 'dependency-error'
+                                                ? "error"
+                                                : serverStatus === 'stopped'
+                                                ? "error"
+                                                : isStreaming
+                                                ? "active"
+                                                : "ready"
                                         }`}
                                     ></span>
                                     <span>
-                                        {serverError?.type === 'dependency-error' ? "Configuration Error" :
-                                         serverStatus === 'stopped' ? "Server Stopped" :
-                                         isStreaming ? "Active" : "Ready"}
+                                        {serverError?.type === 'dependency-error'
+                                            ? "Setup Required"
+                                            : serverStatus === 'stopped'
+                                            ? "Connection Lost"
+                                            : isStreaming
+                                            ? "Active"
+                                            : "Ready"}
                                     </span>
                                 </div>
                             </div>
                         </div>
+
                     </div>
                 </section>
             </main>
