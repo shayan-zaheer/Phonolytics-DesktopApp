@@ -73,9 +73,26 @@ function App() {
                 }
             });
 
-            window.electronAPI.onServerStatusChanged?.((status) => {
+            window.electronAPI.onServerStatusChanged?.((event, status) => {
                 console.log('Status changed:', status);
-                setServerStatus(status.status);
+                
+                // Only update status if it's a meaningful change
+                if (status.status === 'stopped' || status.status === 'connected' || status.status === 'ready') {
+                    setServerStatus(status.status);
+                    
+                    // If connection is lost while streaming, automatically stop the call
+                    if (status.status === 'stopped' && isStreaming) {
+                        console.log('Connection lost - automatically stopping call');
+                        setIsStreaming(false);
+                        // Also call the stop endpoint to clean up server-side state
+                        const apiBase = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+                        fetch(`${apiBase}/stop`, {
+                            method: "POST",
+                        }).catch(err => {
+                            console.error("Failed to stop streaming on server:", err);
+                        });
+                    }
+                }
             });
 
             return () => {
@@ -113,10 +130,20 @@ function App() {
                         {isElectron && <span className="electron-badge">Desktop</span>}
                     </div>
                     <div className="status-panel">
-                        <div className={`status-indicator ${isStreaming ? "active" : "inactive"}`}>
+                        <div className={`status-indicator ${
+                            serverStatus === 'stopped' && isStreaming 
+                                ? "error" 
+                                : isStreaming 
+                                ? "active" 
+                                : "inactive"
+                        }`}>
                             <div className="pulse"></div>
                             <span>
-                                {isStreaming ? "Call in Progress" : "Ready to Start"}
+                                {serverStatus === 'stopped' && isStreaming
+                                    ? "Call Stopped - Connection Lost"
+                                    : isStreaming 
+                                    ? "Call in Progress" 
+                                    : "Ready to Start"}
                             </span>
                         </div>
                     </div>

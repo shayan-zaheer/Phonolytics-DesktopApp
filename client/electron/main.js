@@ -6,6 +6,8 @@ const isDev = process.env.NODE_ENV === 'development'
 
 let mainWindow
 let serverProcess = null
+let connectionStatusPollInterval = null
+let lastConnectionStatus = null
 
 // API Configuration for local server
 const API_CONFIG = {
@@ -16,6 +18,14 @@ const API_CONFIG = {
     STOP_STREAM: '/stop-streaming',
     DEVICES: '/devices',
     WEBSOCKET: '/ws'
+  }
+}
+
+// Local server (port 8080) configuration
+const LOCAL_SERVER_CONFIG = {
+  BASE_URL: 'http://localhost:8080',
+  ENDPOINTS: {
+    HEALTH: '/health'
   }
 }
 
@@ -182,6 +192,112 @@ ipcMain.handle('open-external', (event, url) => {
   shell.openExternal(url)
 })
 
+// Function to poll connection status
+function startConnectionStatusPolling() {
+  if (connectionStatusPollInterval) {
+    return // Already polling
+  }
+
+  connectionStatusPollInterval = setInterval(async () => {
+    try {
+      const https = require('https')
+      const http = require('http')
+      const url = require('url')
+      
+      const healthUrl = `${LOCAL_SERVER_CONFIG.BASE_URL}${LOCAL_SERVER_CONFIG.ENDPOINTS.HEALTH}`
+      const parsedUrl = url.parse(healthUrl)
+      const client = parsedUrl.protocol === 'https:' ? https : http
+      
+      const request = client.get(healthUrl, (response) => {
+        let data = ''
+        
+        response.on('data', (chunk) => {
+          data += chunk
+        })
+        
+        response.on('end', () => {
+          try {
+            const health = JSON.parse(data)
+            const isStreaming = health.streaming || false
+            const connectionStatus = health.connection?.connected
+            
+            // Only check connection status when streaming is active
+            if (isStreaming) {
+              // connectionStatus can be true, false, or null (null = not yet determined)
+              const currentStatus = connectionStatus === true
+              
+              // Only notify if status changed from a known state (not null)
+              if (lastConnectionStatus !== null && lastConnectionStatus !== currentStatus) {
+                if (!currentStatus && connectionStatus === false) {
+                  // Connection lost - notify renderer
+                  mainWindow.webContents.send('server-status-changed', {
+                    status: 'stopped',
+                    message: health.connection?.last_error || 'Connection to port 8000 server lost'
+                  })
+                  console.log('Connection status changed: Connection lost')
+                } else if (currentStatus) {
+                  // Connection restored
+                  mainWindow.webContents.send('server-status-changed', {
+                    status: 'connected',
+                    message: 'Connected to port 8000 server'
+                  })
+                  console.log('Connection status changed: Connected')
+                }
+              }
+              
+              // Update last known status (only track true/false, not null)
+              if (connectionStatus !== null) {
+                lastConnectionStatus = currentStatus
+              }
+            } else {
+              // Not streaming, reset status tracking
+              if (lastConnectionStatus !== null) {
+                lastConnectionStatus = null
+                // Optionally notify that streaming stopped
+                mainWindow.webContents.send('server-status-changed', {
+                  status: 'ready',
+                  message: 'Not streaming'
+                })
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing health response:', error)
+          }
+        })
+      })
+      
+      request.on('error', (error) => {
+        // Server might be down, but don't spam errors
+        if (lastConnectionStatus !== false) {
+          console.error('Error checking connection status:', error.message)
+          lastConnectionStatus = false
+          if (mainWindow) {
+            mainWindow.webContents.send('server-status-changed', {
+              status: 'stopped',
+              message: 'Cannot reach local server'
+            })
+          }
+        }
+      })
+      
+      request.setTimeout(5000, () => {
+        request.destroy()
+      })
+    } catch (error) {
+      console.error('Error in connection status polling:', error)
+    }
+  }, 2000) // Poll every 2 seconds
+}
+
+// Function to stop connection status polling
+function stopConnectionStatusPolling() {
+  if (connectionStatusPollInterval) {
+    clearInterval(connectionStatusPollInterval)
+    connectionStatusPollInterval = null
+    lastConnectionStatus = null
+  }
+}
+
 // Create menu
 function createMenu() {
   const template = [
@@ -233,6 +349,9 @@ app.whenReady().then(async () => {
   
   // Create menu
   createMenu()
+  
+  // Start polling connection status
+  startConnectionStatusPolling()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -242,6 +361,9 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', async (event) => {
+  // Stop connection status polling
+  stopConnectionStatusPolling()
+  
   if (serverProcess && !serverProcess.killed) {
     event.preventDefault()
     console.log('Stopping server before quit...')
