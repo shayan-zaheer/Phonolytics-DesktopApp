@@ -2,7 +2,8 @@ const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
 const fs = require('fs')
-const isDev = process.env.NODE_ENV === 'development'
+// Use app.isPackaged - more reliable than NODE_ENV for dev detection
+const isDev = !app.isPackaged
 
 let mainWindow
 let serverProcess = null

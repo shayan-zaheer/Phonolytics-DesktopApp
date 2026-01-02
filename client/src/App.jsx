@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
 
 function App() {
@@ -8,6 +8,17 @@ function App() {
     const [isElectron, setIsElectron] = useState(false);
     const [serverError, setServerError] = useState(null);
     const [serverStatus, setServerStatus] = useState('unknown');
+
+    // Realtime Help (connects directly to the separate server on :8000)
+    const HELP_WS_URL = "ws://127.0.0.1:8000/call/1/1/MIC";
+    const [helpMessages, setHelpMessages] = useState([]);
+    const [helpIsReplying, setHelpIsReplying] = useState(false);
+    const [helpStatus, setHelpStatus] = useState('disconnected');
+    const helpWsRef = useRef(null);
+    const helpPendingSendRef = useRef(false);
+    const helpIdleTimerRef = useRef(null);
+    const helpScrollRef = useRef(null);
+    const helpExpectingReplyRef = useRef(false);
 
     const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -48,6 +59,178 @@ function App() {
             setIsLoading(false);
         }
     }, []);
+
+    const appendAssistantChunk = useCallback((chunk) => {
+        if (!chunk) return;
+        setHelpMessages((prev) => {
+            // Teleprompter mode: only keep the current message (no history)
+            if (prev.length === 0) return [{ role: 'assistant', content: chunk }];
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant') {
+                return [{ role: 'assistant', content: `${last.content}${chunk}` }];
+            } else {
+                return [{ role: 'assistant', content: chunk }];
+            }
+        });
+    }, []);
+
+    const sanitizeHelpChunk = useCallback((chunk) => {
+        if (typeof chunk !== 'string' || chunk.length === 0) return '';
+
+        let text = chunk;
+
+        // If a JSON wrapper got concatenated into a string, strip it.
+        // Example from upstream: {"type":"connection",...} and {"type":"realtime_help_complete",...}
+        text = text.replace(/\{\s*"type"\s*:\s*"connection"[^}]*\}/g, '');
+        text = text.replace(/\{\s*"type"\s*:\s*"realtime_help_complete"[^}]*\}/g, '');
+        text = text.replace(/\{\s*"type"\s*:\s*"realtime_help_end"[^}]*\}/g, '');
+
+        // Remove tag markers only (keep content inside)
+        text = text.replace(/<\/?think>/gi, '');
+
+        return text;
+    }, []);
+
+    const resetHelpIdleTimer = useCallback(() => {
+        if (helpIdleTimerRef.current) {
+            clearTimeout(helpIdleTimerRef.current);
+        }
+        helpIdleTimerRef.current = setTimeout(() => {
+            setHelpIsReplying(false);
+        }, 1200);
+    }, []);
+
+    const ensureHelpSocket = useCallback(() => {
+        const existing = helpWsRef.current;
+        if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+            return existing;
+        }
+
+        setHelpStatus('connecting');
+        const ws = new WebSocket(HELP_WS_URL);
+        helpWsRef.current = ws;
+
+        ws.onopen = () => {
+            setHelpStatus('connected');
+            if (helpPendingSendRef.current) {
+                helpPendingSendRef.current = false;
+                ws.send(JSON.stringify({ event: 'realtime_help' }));
+                setHelpIsReplying(true);
+                helpExpectingReplyRef.current = true;
+                // Create a fresh assistant bubble for this response
+                setHelpMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+            }
+        };
+
+        ws.onclose = () => {
+            setHelpStatus('disconnected');
+            setHelpIsReplying(false);
+            helpExpectingReplyRef.current = false;
+        };
+
+        ws.onerror = () => {
+            setHelpStatus('error');
+            setHelpIsReplying(false);
+            helpExpectingReplyRef.current = false;
+        };
+
+        ws.onmessage = (evt) => {
+            resetHelpIdleTimer();
+
+            const raw = evt?.data;
+            let data = null;
+            if (typeof raw === 'string') {
+                try {
+                    data = JSON.parse(raw);
+                } catch {
+                    data = raw;
+                }
+            } else {
+                data = raw;
+            }
+
+            // Only render realtime-help responses. Ignore other traffic on the same socket.
+            if (data && typeof data === 'object') {
+                const msgType = data.type || data.event;
+
+                // Ignore obvious non-help messages.
+                if (msgType === 'connection' || msgType === 'transcription' || msgType === 'analysis') {
+                    return;
+                }
+
+                if (msgType === 'realtime_help_start') {
+                    setHelpIsReplying(true);
+                    helpExpectingReplyRef.current = true;
+                    setHelpMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+                    return;
+                }
+
+                if (msgType === 'realtime_help_complete' || msgType === 'realtime_help_end') {
+                    setHelpIsReplying(false);
+                    helpExpectingReplyRef.current = false;
+                    return;
+                }
+
+                const chunk =
+                    (msgType === 'realtime_help_chunk' && typeof data.text === 'string')
+                        ? data.text
+                        : typeof data.text === 'string'
+                            ? data.text
+                            : typeof data.chunk === 'string'
+                                ? data.chunk
+                                : null;
+
+                // Many upstreams just stream objects with a text field (sometimes without msgType).
+                if (helpExpectingReplyRef.current && chunk) {
+                    const cleaned = sanitizeHelpChunk(chunk);
+                    if (cleaned) {
+                        appendAssistantChunk(cleaned);
+                        setHelpIsReplying(true);
+                    }
+                }
+
+                return;
+            }
+
+            if (typeof data === 'string') {
+                // Only accept raw string chunks while we are expecting a help reply.
+                if (!helpExpectingReplyRef.current) return;
+
+                // Ignore JSON-ish strings
+                const trimmed = data.trim();
+                if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                    return;
+                }
+
+                const cleaned = sanitizeHelpChunk(data);
+                if (cleaned) {
+                    appendAssistantChunk(cleaned);
+                    setHelpIsReplying(true);
+                }
+            }
+        };
+
+        return ws;
+    }, [appendAssistantChunk, resetHelpIdleTimer]);
+
+    const requestRealtimeHelp = useCallback(() => {
+        // Replicate the Postman flow:
+        // connect to ws://127.0.0.1:8000/call/1/1/MIC
+        // then send {"event":"realtime_help"}
+        const ws = ensureHelpSocket();
+
+        // Don't show user messages - this is a teleprompter, not a chat
+
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ event: 'realtime_help' }));
+            setHelpIsReplying(true);
+            helpExpectingReplyRef.current = true;
+            setHelpMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+        } else {
+            helpPendingSendRef.current = true;
+            helpExpectingReplyRef.current = true;
+        }
+    }, [ensureHelpSocket]);
 
     useEffect(() => {
         setIsElectron(window.electronAPI !== undefined);
@@ -117,6 +300,25 @@ function App() {
             setAudioLevels({ mic: 0, system: 0 });
         }
     }, [isStreaming]);
+
+    useEffect(() => {
+        const el = helpScrollRef.current;
+        if (!el) return;
+        el.scrollTop = el.scrollHeight;
+    }, [helpMessages, helpIsReplying]);
+
+    useEffect(() => {
+        return () => {
+            if (helpIdleTimerRef.current) {
+                clearTimeout(helpIdleTimerRef.current);
+            }
+            try {
+                helpWsRef.current?.close();
+            } catch {
+                // ignore
+            }
+        };
+    }, []);
 
     return (
         <div className="app">
@@ -200,6 +402,51 @@ function App() {
                                     : "Start Call"}
                             </span>
                         </button>
+                    </div>
+                </section>
+
+                <section className="realtime-help-panel liquid-glass chat-container">
+                    <div className="glass-content">
+                        <div className="panel-header">
+                            <h2>Realtime Help</h2>
+                            <button
+                                className="btn btn-help"
+                                onClick={requestRealtimeHelp}
+                                disabled={helpIsReplying}
+                                title={HELP_WS_URL}
+                            >
+                                {helpIsReplying ? 'Replying…' : 'Get Help'}
+                            </button>
+                        </div>
+
+                        <div className="help-transcript" ref={helpScrollRef}>
+                            {helpMessages.length === 0 ? (
+                                <div className="help-empty">Press “Get Help” to request realtime guidance.</div>
+                            ) : (
+                                helpMessages
+                                    .filter(m => m.role === 'assistant')
+                                    .map((m, idx) => (
+                                    <div key={idx} className="help-row help-row-assistant">
+                                        <div className="help-bubble help-bubble-assistant">
+                                            {m.content}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+
+                            {helpIsReplying && (
+                                <div className="help-row help-row-assistant">
+                                    <div className="help-bubble help-bubble-assistant help-typing">
+                                        <span className="help-typing-label">…is replying…</span>
+                                        <span className="help-dots">
+                                            <span className="dot" style={{ animationDelay: '0ms' }}></span>
+                                            <span className="dot" style={{ animationDelay: '200ms' }}></span>
+                                            <span className="dot" style={{ animationDelay: '400ms' }}></span>
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </section>
 
