@@ -9,15 +9,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog methods
   showMessageBox: (options) => ipcRenderer.invoke('show-message-box', options),
   
-  // Server management
-  getServerStatus: () => ipcRenderer.invoke('get-server-status'),
-  restartServer: () => ipcRenderer.invoke('restart-server'),
-  
   // Menu events listeners
-  onMenuNewRecording: (callback) => ipcRenderer.on('menu-new-recording', callback),
   onMenuStartRecording: (callback) => ipcRenderer.on('menu-start-recording', callback),
   onMenuStopRecording: (callback) => ipcRenderer.on('menu-stop-recording', callback),
-  onMenuRefreshDevices: (callback) => ipcRenderer.on('menu-refresh-devices', callback),
+  
+  onServerError: (callback) => ipcRenderer.on('server-error', callback),
+  onServerStatusChanged: (callback) => ipcRenderer.on('server-status-changed', callback),
   
   // Remove listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),

@@ -27,6 +27,7 @@ release
 .electron-builder-cache
 *.dmg
 *.exe
+!resources/server/server.exe
 *.deb
 *.rpm
 *.AppImage
@@ -126,3 +127,4 @@ Desktop.ini
 
 # Auto-generated files
 *.d.ts.map
+*.bak
