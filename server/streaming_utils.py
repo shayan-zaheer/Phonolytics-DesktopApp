@@ -207,8 +207,30 @@ def audio_capture_thread(device_index, tag):
 
 def network_send_thread(tag):
     global is_streaming, websockets, audio_queues
-    ws = create_websocket_connection(tag)
-    if not ws:
+    log_interval = 2
+    last_log = 0
+    start_time = time.time()
+    
+    # Retry loop for initial connection
+    while is_streaming:
+        ws = create_websocket_connection(tag)
+        if ws:
+            break
+            
+        if time.time() - last_log >= log_interval:
+            logger.info(f"[{tag}] Waiting for server... (attempting to connect)")
+            last_log = time.time()
+            
+        # Stop trying after 30 seconds to prevent infinite zombie threads
+        if time.time() - start_time > 30:
+            logger.error(f"[{tag}] Timed out waiting for server connection")
+            return
+            
+        time.sleep(1)
+
+    if not is_streaming:
+        if ws:
+            ws.close()
         return
 
     websockets[tag] = ws

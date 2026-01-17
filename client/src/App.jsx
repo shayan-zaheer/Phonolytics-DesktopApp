@@ -9,8 +9,8 @@ function App() {
     const [serverError, setServerError] = useState(null);
     const [serverStatus, setServerStatus] = useState('unknown');
 
-    // Realtime Help (connects directly to the separate server on :8000)
-    const HELP_WS_URL = "ws://127.0.0.1:8000/call/1/1/MIC";
+    // Realtime Help (connects to the recording endpoint which has the realtime_help handler)
+    const HELP_WS_URL = "ws://127.0.0.1:8000/calls/recording/1/agent";
     const [helpMessages, setHelpMessages] = useState([]);
     const [helpIsReplying, setHelpIsReplying] = useState(false);
     const [helpStatus, setHelpStatus] = useState('disconnected');
