@@ -1,107 +1,315 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron')
 const path = require('path')
-const isDev = process.env.NODE_ENV === 'development'
+const { spawn } = require('child_process')
+const fs = require('fs')
+// Use app.isPackaged - more reliable than NODE_ENV for dev detection
+const isDev = !app.isPackaged
 
 let mainWindow
+let serverProcess = null
+let connectionStatusPollInterval = null
+let lastConnectionStatus = null
+
+// API Configuration for local server
+const API_CONFIG = {
+  BASE_URL: 'http://localhost:8000',
+  ENDPOINTS: {
+    HEALTH: '/health',
+    START_STREAM: '/start-streaming',
+    STOP_STREAM: '/stop-streaming',
+    DEVICES: '/devices',
+    WEBSOCKET: '/ws'
+  }
+}
+
+// Local server (port 8080) configuration
+const LOCAL_SERVER_CONFIG = {
+  BASE_URL: 'http://localhost:8080',
+  ENDPOINTS: {
+    HEALTH: '/health'
+  }
+}
+
+// Function to start the server executable
+function startServerProcess() {
+  console.log('Starting server process...')
+  
+  // Path to server executable
+  const serverExePath = isDev 
+    ? path.join(__dirname, '../resources/server/server.exe')
+    : path.join(process.resourcesPath, 'server', 'server.exe')
+  
+  console.log('Server executable path:', serverExePath)
+  
+  if (!fs.existsSync(serverExePath)) {
+    console.error('Server executable not found at:', serverExePath)
+    return false
+  }
+  
+  try {
+    serverProcess = spawn(serverExePath, [], {
+      cwd: path.dirname(serverExePath),
+      detached: false,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    
+    serverProcess.stdout.on('data', (data) => {
+      console.log('SERVER:', data.toString())
+    })
+    
+    serverProcess.stderr.on('data', (data) => {
+      console.error('SERVER ERROR:', data.toString())
+    })
+    
+    serverProcess.on('close', (code) => {
+      console.log(`Server process exited with code ${code}`)
+      serverProcess = null
+    })
+    
+    serverProcess.on('error', (error) => {
+      console.error('Server process error:', error)
+      serverProcess = null
+    })
+    
+    console.log('Server process started successfully')
+    return true
+    
+  } catch (error) {
+    console.error('Failed to start server process:', error)
+    return false
+  }
+}
+
+// Function to stop the server process
+function stopServerProcess() {
+  return new Promise((resolve) => {
+    if (serverProcess) {
+      console.log('Stopping server process...')
+      
+      serverProcess.on('close', () => {
+        console.log('Server process stopped')
+        serverProcess = null
+        resolve()
+      })
+      
+      serverProcess.kill('SIGTERM')
+      
+      // Force kill after 5 seconds if graceful shutdown fails
+      setTimeout(() => {
+        if (serverProcess && !serverProcess.killed) {
+          console.log('Force killing server process')
+          serverProcess.kill('SIGKILL')
+          serverProcess = null
+        }
+        resolve()
+      }, 5000)
+    } else {
+      resolve()
+    }
+  })
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1000,
-    minHeight: 700,
+    width: 1200,
+    height: 800,
     webPreferences: {
-      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      nodeIntegration: false
     },
-    icon: path.join(__dirname, '../public/logo.ico'),
     show: false,
-    titleBarStyle: 'default',
-    frame: true,
-    backgroundColor: '#0a0a0a'
+    icon: path.join(__dirname, '../public/logo.ico')
   })
 
+  // Load the app
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
-    
-    if (isDev) {
-      mainWindow.focus()
-    }
   })
 
+  // Handle window closed
   mainWindow.on('closed', () => {
     mainWindow = null
   })
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  setApplicationMenu()
 }
 
-function setApplicationMenu() {
+// Handle API requests from renderer
+ipcMain.handle('api-request', async (event, { endpoint, method = 'GET', data }) => {
+  try {
+    const url = `${API_CONFIG.BASE_URL}${endpoint}`
+    console.log(`API Request: ${method} ${url}`)
+    
+    const fetch = require('electron').net.request || require('https').request
+    
+    const options = {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+    
+    if (method !== 'GET' && data) {
+      options.body = JSON.stringify(data)
+    }
+
+    const response = await fetch(url, options)
+    const result = await response.json()
+    
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('API Request failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Handle window controls
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize()
+})
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
+    }
+  }
+})
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) mainWindow.close()
+})
+
+// Handle external links
+ipcMain.handle('open-external', (event, url) => {
+  shell.openExternal(url)
+})
+
+// Function to poll connection status
+function startConnectionStatusPolling() {
+  if (connectionStatusPollInterval) {
+    return // Already polling
+  }
+
+  connectionStatusPollInterval = setInterval(async () => {
+    try {
+      const https = require('https')
+      const http = require('http')
+      const url = require('url')
+      
+      const healthUrl = `${LOCAL_SERVER_CONFIG.BASE_URL}${LOCAL_SERVER_CONFIG.ENDPOINTS.HEALTH}`
+      const parsedUrl = url.parse(healthUrl)
+      const client = parsedUrl.protocol === 'https:' ? https : http
+      
+      const request = client.get(healthUrl, (response) => {
+        let data = ''
+        
+        response.on('data', (chunk) => {
+          data += chunk
+        })
+        
+        response.on('end', () => {
+          try {
+            const health = JSON.parse(data)
+            const isStreaming = health.streaming || false
+            const connectionStatus = health.connection?.connected
+            
+            // Only check connection status when streaming is active
+            if (isStreaming) {
+              // connectionStatus can be true, false, or null (null = not yet determined)
+              const currentStatus = connectionStatus === true
+              
+              // Only notify if status changed from a known state (not null)
+              if (lastConnectionStatus !== null && lastConnectionStatus !== currentStatus) {
+                if (!currentStatus && connectionStatus === false) {
+                  // Connection lost - notify renderer
+                  mainWindow.webContents.send('server-status-changed', {
+                    status: 'stopped',
+                    message: health.connection?.last_error || 'Connection to port 8000 server lost'
+                  })
+                  console.log('Connection status changed: Connection lost')
+                } else if (currentStatus) {
+                  // Connection restored
+                  mainWindow.webContents.send('server-status-changed', {
+                    status: 'connected',
+                    message: 'Connected to port 8000 server'
+                  })
+                  console.log('Connection status changed: Connected')
+                }
+              }
+              
+              // Update last known status (only track true/false, not null)
+              if (connectionStatus !== null) {
+                lastConnectionStatus = currentStatus
+              }
+            } else {
+              // Not streaming, reset status tracking
+              if (lastConnectionStatus !== null) {
+                lastConnectionStatus = null
+                // Optionally notify that streaming stopped
+                mainWindow.webContents.send('server-status-changed', {
+                  status: 'ready',
+                  message: 'Not streaming'
+                })
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing health response:', error)
+          }
+        })
+      })
+      
+      request.on('error', (error) => {
+        // Server might be down, but don't spam errors
+        if (lastConnectionStatus !== false) {
+          console.error('Error checking connection status:', error.message)
+          lastConnectionStatus = false
+          if (mainWindow) {
+            mainWindow.webContents.send('server-status-changed', {
+              status: 'stopped',
+              message: 'Cannot reach local server'
+            })
+          }
+        }
+      })
+      
+      request.setTimeout(5000, () => {
+        request.destroy()
+      })
+    } catch (error) {
+      console.error('Error in connection status polling:', error)
+    }
+  }, 2000) // Poll every 2 seconds
+}
+
+// Function to stop connection status polling
+function stopConnectionStatusPolling() {
+  if (connectionStatusPollInterval) {
+    clearInterval(connectionStatusPollInterval)
+    connectionStatusPollInterval = null
+    lastConnectionStatus = null
+  }
+}
+
+// Create menu
+function createMenu() {
   const template = [
     {
       label: 'File',
       submenu: [
         {
-          label: 'New Recording',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => {
-            mainWindow.webContents.send('menu-new-recording')
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Open Recordings Folder',
-          click: () => {
-            shell.openPath(path.join(__dirname, '../../server/recordings'))
-          }
-        },
-        { type: 'separator' },
-        {
-          label: isDev ? 'Exit' : 'Quit Phonolytics',
+          label: 'Exit',
           accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
           click: () => {
             app.quit()
-          }
-        }
-      ]
-    },
-    {
-      label: 'Audio',
-      submenu: [
-        {
-          label: 'Start Recording',
-          accelerator: 'CmdOrCtrl+R',
-          click: () => {
-            mainWindow.webContents.send('menu-start-recording')
-          }
-        },
-        {
-          label: 'Stop Recording',
-          accelerator: 'CmdOrCtrl+S',
-          click: () => {
-            mainWindow.webContents.send('menu-stop-recording')
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Refresh Devices',
-          accelerator: 'CmdOrCtrl+D',
-          click: () => {
-            mainWindow.webContents.send('menu-refresh-devices')
           }
         }
       ]
@@ -126,132 +334,54 @@ function setApplicationMenu() {
         { role: 'minimize' },
         { role: 'close' }
       ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'About Phonolytics',
-          click: () => {
-            const aboutWindow = new BrowserWindow({
-              width: 400,
-              height: 300,
-              modal: true,
-              parent: mainWindow,
-              webPreferences: {
-                nodeIntegration: false,
-                contextIsolation: true
-              }
-            })
-            
-            aboutWindow.loadURL(`data:text/html;charset=utf-8,
-              <html>
-                <head>
-                  <title>About Phonolytics</title>
-                  <style>
-                    body { 
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                      background: #0a0a0a;
-                      color: #ffffff;
-                      text-align: center;
-                      padding: 50px;
-                      margin: 0;
-                    }
-                    h1 { color: #00d4ff; font-size: 24px; margin-bottom: 10px; }
-                    p { margin: 10px 0; }
-                    .version { color: #a0a0a0; font-size: 14px; }
-                  </style>
-                </head>
-                <body>
-                  <h1>🎵 Phonolytics</h1>
-                  <p>Advanced Audio Streaming & Recording Application</p>
-                  <p class="version">Version 1.0.0</p>
-                  <p>Built with Electron, React & FastAPI</p>
-                </body>
-              </html>
-            `)
-            
-            aboutWindow.setMenuBarVisibility(false)
-          }
-        },
-        {
-          label: 'Learn More',
-          click: () => {
-            shell.openExternal('https://github.com/shayan-zaheer/Phonolytics-DesktopApp')
-          }
-        }
-      ]
     }
   ]
-
-  // macOS specific menu adjustments
-  if (process.platform === 'darwin') {
-    template.unshift({
-      label: app.getName(),
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    })
-
-    // Window menu
-    template[4].submenu = [
-      { role: 'close' },
-      { role: 'minimize' },
-      { role: 'zoom' },
-      { type: 'separator' },
-      { role: 'front' }
-    ]
-  }
 
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
 }
 
-// App event handlers
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Start the server process first
+  startServerProcess()
+  
+  // Create the main window
   createWindow()
+  
+  // Create menu
+  createMenu()
+  
+  // Start polling connection status
+  startConnectionStatusPolling()
 
   app.on('activate', () => {
-    // On macOS, re-create a window when the dock icon is clicked
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
 })
 
+app.on('before-quit', async (event) => {
+  // Stop connection status polling
+  stopConnectionStatusPolling()
+  
+  if (serverProcess && !serverProcess.killed) {
+    event.preventDefault()
+    console.log('Stopping server before quit...')
+    await stopServerProcess()
+    app.quit()
+  }
+})
+
 app.on('window-all-closed', () => {
-  // On macOS, keep the app running even when all windows are closed
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// Security: Prevent new window creation
-app.on('web-contents-created', (event, contents) => {
-  contents.on('new-window', (event, navigationUrl) => {
-    event.preventDefault()
-    shell.openExternal(navigationUrl)
-  })
-})
-
-// IPC handlers for communication with renderer process
-ipcMain.handle('app-version', () => {
-  return app.getVersion()
-})
-
-ipcMain.handle('show-message-box', async (event, options) => {
+// Handle app errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error)
   const { dialog } = require('electron')
-  const result = await dialog.showMessageBox(mainWindow, options)
-  return result
+  dialog.showErrorBox('Unexpected Error', error.message)
 })
-
-// Handle app protocol (for deep linking if needed)
-app.setAsDefaultProtocolClient('phonolytics')

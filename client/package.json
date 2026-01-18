@@ -2,7 +2,7 @@
   "name": "phonolytics-desktop",
   "productName": "Phonolytics",
   "version": "1.0.0",
-  "description": "Advanced Audio Streaming & Recording Application",
+  "description": "Advanced Audio Streaming Application",
   "author": {
     "name": "Shayan Zaheer",
     "email": "shayanali124421@gmail.com"
@@ -22,7 +22,8 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false",
+    "setup-python": "powershell -ExecutionPolicy Bypass -File setup-python-runtime.ps1",
+    "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false --config.nsis.allowToChangeInstallationDirectory=true",
     "electron-dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --publish=never --config.compression=store",
     "build:portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --config.compression=store --config.forceCodeSigning=false"
   },
@@ -57,11 +58,33 @@
       "electron/**/*",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/server/",
+        "to": "server/",
+        "filter": [
+          "server.exe"
+        ]
+      }
+    ],
     "extraMetadata": {
       "main": "electron/main.js"
     },
     "win": {
-      "target": "portable",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "public/logo.ico",
       "requestedExecutionLevel": "asInvoker"
     },
@@ -80,7 +103,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "warningsAsErrors": false
     },
     "compression": "store",
     "nodeGypRebuild": false,

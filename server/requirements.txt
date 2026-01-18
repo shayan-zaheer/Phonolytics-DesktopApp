@@ -1,4 +1,8 @@
 fastapi
-uvicorn
-websocket-client
+uvicorn[standard]
 pyaudiowpatch
+websocket_client==1.8.0
+websockets==15.0.1
+numpy
+sounddevice==0.5.2
+aiohttp==3.12.15
