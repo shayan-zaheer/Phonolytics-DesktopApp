@@ -7,13 +7,13 @@ function App() {
     const [audioLevels, setAudioLevels] = useState({ mic: 0, system: 0 });
     const [isElectron, setIsElectron] = useState(false);
     const [serverError, setServerError] = useState(null);
-    const [serverStatus, setServerStatus] = useState('unknown');
+    const [serverStatus, setServerStatus] = useState("unknown");
 
     // Realtime Help (connects to the recording endpoint which has the realtime_help handler)
     const HELP_WS_URL = "ws://127.0.0.1:8000/calls/recording/1/agent";
     const [helpMessages, setHelpMessages] = useState([]);
     const [helpIsReplying, setHelpIsReplying] = useState(false);
-    const [helpStatus, setHelpStatus] = useState('disconnected');
+    const [helpStatus, setHelpStatus] = useState("disconnected");
     const helpWsRef = useRef(null);
     const helpPendingSendRef = useRef(false);
     const helpIdleTimerRef = useRef(null);
@@ -64,29 +64,38 @@ function App() {
         if (!chunk) return;
         setHelpMessages((prev) => {
             // Teleprompter mode: only keep the current message (no history)
-            if (prev.length === 0) return [{ role: 'assistant', content: chunk }];
+            if (prev.length === 0)
+                return [{ role: "assistant", content: chunk }];
             const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-                return [{ role: 'assistant', content: `${last.content}${chunk}` }];
+            if (last?.role === "assistant") {
+                return [
+                    { role: "assistant", content: `${last.content}${chunk}` },
+                ];
             } else {
-                return [{ role: 'assistant', content: chunk }];
+                return [{ role: "assistant", content: chunk }];
             }
         });
     }, []);
 
     const sanitizeHelpChunk = useCallback((chunk) => {
-        if (typeof chunk !== 'string' || chunk.length === 0) return '';
+        if (typeof chunk !== "string" || chunk.length === 0) return "";
 
         let text = chunk;
 
         // If a JSON wrapper got concatenated into a string, strip it.
         // Example from upstream: {"type":"connection",...} and {"type":"realtime_help_complete",...}
-        text = text.replace(/\{\s*"type"\s*:\s*"connection"[^}]*\}/g, '');
-        text = text.replace(/\{\s*"type"\s*:\s*"realtime_help_complete"[^}]*\}/g, '');
-        text = text.replace(/\{\s*"type"\s*:\s*"realtime_help_end"[^}]*\}/g, '');
+        text = text.replace(/\{\s*"type"\s*:\s*"connection"[^}]*\}/g, "");
+        text = text.replace(
+            /\{\s*"type"\s*:\s*"realtime_help_complete"[^}]*\}/g,
+            "",
+        );
+        text = text.replace(
+            /\{\s*"type"\s*:\s*"realtime_help_end"[^}]*\}/g,
+            "",
+        );
 
         // Remove tag markers only (keep content inside)
-        text = text.replace(/<\/?think>/gi, '');
+        text = text.replace(/<\/?think>/gi, "");
 
         return text;
     }, []);
@@ -102,34 +111,41 @@ function App() {
 
     const ensureHelpSocket = useCallback(() => {
         const existing = helpWsRef.current;
-        if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+        if (
+            existing &&
+            (existing.readyState === WebSocket.OPEN ||
+                existing.readyState === WebSocket.CONNECTING)
+        ) {
             return existing;
         }
 
-        setHelpStatus('connecting');
+        setHelpStatus("connecting");
         const ws = new WebSocket(HELP_WS_URL);
         helpWsRef.current = ws;
 
         ws.onopen = () => {
-            setHelpStatus('connected');
+            setHelpStatus("connected");
             if (helpPendingSendRef.current) {
                 helpPendingSendRef.current = false;
-                ws.send(JSON.stringify({ event: 'realtime_help' }));
+                ws.send(JSON.stringify({ event: "realtime_help" }));
                 setHelpIsReplying(true);
                 helpExpectingReplyRef.current = true;
                 // Create a fresh assistant bubble for this response
-                setHelpMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+                setHelpMessages((prev) => [
+                    ...prev,
+                    { role: "assistant", content: "" },
+                ]);
             }
         };
 
         ws.onclose = () => {
-            setHelpStatus('disconnected');
+            setHelpStatus("disconnected");
             setHelpIsReplying(false);
             helpExpectingReplyRef.current = false;
         };
 
         ws.onerror = () => {
-            setHelpStatus('error');
+            setHelpStatus("error");
             setHelpIsReplying(false);
             helpExpectingReplyRef.current = false;
         };
@@ -139,7 +155,7 @@ function App() {
 
             const raw = evt?.data;
             let data = null;
-            if (typeof raw === 'string') {
+            if (typeof raw === "string") {
                 try {
                     data = JSON.parse(raw);
                 } catch {
@@ -150,35 +166,46 @@ function App() {
             }
 
             // Only render realtime-help responses. Ignore other traffic on the same socket.
-            if (data && typeof data === 'object') {
+            if (data && typeof data === "object") {
                 const msgType = data.type || data.event;
 
                 // Ignore obvious non-help messages.
-                if (msgType === 'connection' || msgType === 'transcription' || msgType === 'analysis') {
+                if (
+                    msgType === "connection" ||
+                    msgType === "transcription" ||
+                    msgType === "analysis"
+                ) {
                     return;
                 }
 
-                if (msgType === 'realtime_help_start') {
+                if (msgType === "realtime_help_start") {
                     setHelpIsReplying(true);
                     helpExpectingReplyRef.current = true;
-                    setHelpMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+                    setHelpMessages((prev) => [
+                        ...prev,
+                        { role: "assistant", content: "" },
+                    ]);
                     return;
                 }
 
-                if (msgType === 'realtime_help_complete' || msgType === 'realtime_help_end') {
+                if (
+                    msgType === "realtime_help_complete" ||
+                    msgType === "realtime_help_end"
+                ) {
                     setHelpIsReplying(false);
                     helpExpectingReplyRef.current = false;
                     return;
                 }
 
                 const chunk =
-                    (msgType === 'realtime_help_chunk' && typeof data.text === 'string')
+                    msgType === "realtime_help_chunk" &&
+                    typeof data.text === "string"
                         ? data.text
-                        : typeof data.text === 'string'
-                            ? data.text
-                            : typeof data.chunk === 'string'
-                                ? data.chunk
-                                : null;
+                        : typeof data.text === "string"
+                          ? data.text
+                          : typeof data.chunk === "string"
+                            ? data.chunk
+                            : null;
 
                 // Many upstreams just stream objects with a text field (sometimes without msgType).
                 if (helpExpectingReplyRef.current && chunk) {
@@ -192,13 +219,16 @@ function App() {
                 return;
             }
 
-            if (typeof data === 'string') {
+            if (typeof data === "string") {
                 // Only accept raw string chunks while we are expecting a help reply.
                 if (!helpExpectingReplyRef.current) return;
 
                 // Ignore JSON-ish strings
                 const trimmed = data.trim();
-                if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                if (
+                    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+                    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+                ) {
                     return;
                 }
 
@@ -222,10 +252,13 @@ function App() {
         // Don't show user messages - this is a teleprompter, not a chat
 
         if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ event: 'realtime_help' }));
+            ws.send(JSON.stringify({ event: "realtime_help" }));
             setHelpIsReplying(true);
             helpExpectingReplyRef.current = true;
-            setHelpMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+            setHelpMessages((prev) => [
+                ...prev,
+                { role: "assistant", content: "" },
+            ]);
         } else {
             helpPendingSendRef.current = true;
             helpExpectingReplyRef.current = true;
@@ -249,30 +282,41 @@ function App() {
             });
 
             window.electronAPI.onServerError?.((error) => {
-                console.log('Error received:', error);
+                console.log("Error received:", error);
                 setServerError(error);
-                if (error.type === 'dependency-error') {
-                    setServerStatus('dependency-error');
+                if (error.type === "dependency-error") {
+                    setServerStatus("dependency-error");
                 }
             });
 
             window.electronAPI.onServerStatusChanged?.((event, status) => {
-                console.log('Status changed:', status);
-                
+                console.log("Status changed:", status);
+
                 // Only update status if it's a meaningful change
-                if (status.status === 'stopped' || status.status === 'connected' || status.status === 'ready') {
+                if (
+                    status.status === "stopped" ||
+                    status.status === "connected" ||
+                    status.status === "ready"
+                ) {
                     setServerStatus(status.status);
-                    
+
                     // If connection is lost while streaming, automatically stop the call
-                    if (status.status === 'stopped' && isStreaming) {
-                        console.log('Connection lost - automatically stopping call');
+                    if (status.status === "stopped" && isStreaming) {
+                        console.log(
+                            "Connection lost - automatically stopping call",
+                        );
                         setIsStreaming(false);
                         // Also call the stop endpoint to clean up server-side state
-                        const apiBase = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+                        const apiBase =
+                            import.meta.env.VITE_API_BASE ||
+                            "http://localhost:8080";
                         fetch(`${apiBase}/stop`, {
                             method: "POST",
-                        }).catch(err => {
-                            console.error("Failed to stop streaming on server:", err);
+                        }).catch((err) => {
+                            console.error(
+                                "Failed to stop streaming on server:",
+                                err,
+                            );
                         });
                     }
                 }
@@ -282,7 +326,9 @@ function App() {
                 window.electronAPI.removeAllListeners?.("menu-start-recording");
                 window.electronAPI.removeAllListeners?.("menu-stop-recording");
                 window.electronAPI.removeAllListeners?.("server-error");
-                window.electronAPI.removeAllListeners?.("server-status-changed");
+                window.electronAPI.removeAllListeners?.(
+                    "server-status-changed",
+                );
             };
         }
     }, [isStreaming, isLoading, startStreaming, stopStreaming]);
@@ -327,25 +373,33 @@ function App() {
             <header className="header">
                 <div className="header-content">
                     <div className="logo">
-                        <img src="./logo.svg" alt="Phonolytics" className="logo-icon" />
+                        <img
+                            src="./logo.png"
+                            alt="Phonolytics"
+                            className="logo-icon"
+                        />
                         <h1>Phonolytics</h1>
-                        {isElectron && <span className="electron-badge">Desktop</span>}
+                        {isElectron && (
+                            <span className="electron-badge">Desktop</span>
+                        )}
                     </div>
                     <div className="status-panel">
-                        <div className={`status-indicator ${
-                            serverStatus === 'stopped' && isStreaming 
-                                ? "error" 
-                                : isStreaming 
-                                ? "active" 
-                                : "inactive"
-                        }`}>
+                        <div
+                            className={`status-indicator ${
+                                serverStatus === "stopped" && isStreaming
+                                    ? "error"
+                                    : isStreaming
+                                      ? "active"
+                                      : "inactive"
+                            }`}
+                        >
                             <div className="pulse"></div>
                             <span>
-                                {serverStatus === 'stopped' && isStreaming
+                                {serverStatus === "stopped" && isStreaming
                                     ? "Call Stopped - Connection Lost"
-                                    : isStreaming 
-                                    ? "Call in Progress" 
-                                    : "Ready to Start"}
+                                    : isStreaming
+                                      ? "Call in Progress"
+                                      : "Ready to Start"}
                             </span>
                         </div>
                     </div>
@@ -357,7 +411,8 @@ function App() {
                     <div className="panel-header">
                         <h2>Call Controls</h2>
                         <p className="panel-description">
-                            Manage your microphone and system audio during the call.
+                            Manage your microphone and system audio during the
+                            call.
                         </p>
                     </div>
 
@@ -370,7 +425,9 @@ function App() {
                                     style={{ width: `${audioLevels.mic}%` }}
                                 ></div>
                             </div>
-                            <span className="level-value">{Math.round(audioLevels.mic)}%</span>
+                            <span className="level-value">
+                                {Math.round(audioLevels.mic)}%
+                            </span>
                         </div>
 
                         <div className="channel">
@@ -381,14 +438,18 @@ function App() {
                                     style={{ width: `${audioLevels.system}%` }}
                                 ></div>
                             </div>
-                            <span className="level-value">{Math.round(audioLevels.system)}%</span>
+                            <span className="level-value">
+                                {Math.round(audioLevels.system)}%
+                            </span>
                         </div>
                     </div>
 
                     <div className="control-buttons">
                         <button
                             className={`btn ${isStreaming ? "btn-stop" : "btn-start"}`}
-                            onClick={isStreaming ? stopStreaming : startStreaming}
+                            onClick={
+                                isStreaming ? stopStreaming : startStreaming
+                            }
                             disabled={isLoading}
                         >
                             <span className="btn-icon">
@@ -398,8 +459,8 @@ function App() {
                                 {isLoading
                                     ? "Processing..."
                                     : isStreaming
-                                    ? "End Call"
-                                    : "Start Call"}
+                                      ? "End Call"
+                                      : "Start Call"}
                             </span>
                         </button>
                     </div>
@@ -415,33 +476,56 @@ function App() {
                                 disabled={helpIsReplying}
                                 title={HELP_WS_URL}
                             >
-                                {helpIsReplying ? 'Replying…' : 'Get Help'}
+                                {helpIsReplying ? "Replying…" : "Get Help"}
                             </button>
                         </div>
 
                         <div className="help-transcript" ref={helpScrollRef}>
                             {helpMessages.length === 0 ? (
-                                <div className="help-empty">Press “Get Help” to request realtime guidance.</div>
+                                <div className="help-empty">
+                                    Press “Get Help” to request realtime
+                                    guidance.
+                                </div>
                             ) : (
                                 helpMessages
-                                    .filter(m => m.role === 'assistant')
+                                    .filter((m) => m.role === "assistant")
                                     .map((m, idx) => (
-                                    <div key={idx} className="help-row help-row-assistant">
-                                        <div className="help-bubble help-bubble-assistant">
-                                            {m.content}
+                                        <div
+                                            key={idx}
+                                            className="help-row help-row-assistant"
+                                        >
+                                            <div className="help-bubble help-bubble-assistant">
+                                                {m.content}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
+                                    ))
                             )}
 
                             {helpIsReplying && (
                                 <div className="help-row help-row-assistant">
                                     <div className="help-bubble help-bubble-assistant help-typing">
-                                        <span className="help-typing-label">…is replying…</span>
+                                        <span className="help-typing-label">
+                                            …is replying…
+                                        </span>
                                         <span className="help-dots">
-                                            <span className="dot" style={{ animationDelay: '0ms' }}></span>
-                                            <span className="dot" style={{ animationDelay: '200ms' }}></span>
-                                            <span className="dot" style={{ animationDelay: '400ms' }}></span>
+                                            <span
+                                                className="dot"
+                                                style={{
+                                                    animationDelay: "0ms",
+                                                }}
+                                            ></span>
+                                            <span
+                                                className="dot"
+                                                style={{
+                                                    animationDelay: "200ms",
+                                                }}
+                                            ></span>
+                                            <span
+                                                className="dot"
+                                                style={{
+                                                    animationDelay: "400ms",
+                                                }}
+                                            ></span>
                                         </span>
                                     </div>
                                 </div>
@@ -456,14 +540,18 @@ function App() {
                     </div>
 
                     <div className="info-grid">
-
                         <div className="info-card">
                             <div className="info-icon">🎤</div>
                             <div className="info-content">
                                 <h3>Microphone</h3>
-                                <p>Your voice is being captured through the microphone.</p>
+                                <p>
+                                    Your voice is being captured through the
+                                    microphone.
+                                </p>
                                 <div className="info-status">
-                                    <span className={`status-dot ${isStreaming ? "active" : "inactive"}`}></span>
+                                    <span
+                                        className={`status-dot ${isStreaming ? "active" : "inactive"}`}
+                                    ></span>
                                     <span>{isStreaming ? "Live" : "Idle"}</span>
                                 </div>
                             </div>
@@ -473,9 +561,14 @@ function App() {
                             <div className="info-icon">🔊</div>
                             <div className="info-content">
                                 <h3>System Audio</h3>
-                                <p>Your computer’s audio is being shared during the call.</p>
+                                <p>
+                                    Your computer’s audio is being shared during
+                                    the call.
+                                </p>
                                 <div className="info-status">
-                                    <span className={`status-dot ${isStreaming ? "active" : "inactive"}`}></span>
+                                    <span
+                                        className={`status-dot ${isStreaming ? "active" : "inactive"}`}
+                                    ></span>
                                     <span>{isStreaming ? "Live" : "Idle"}</span>
                                 </div>
                             </div>
@@ -485,10 +578,19 @@ function App() {
                             <div className="info-icon">🌐</div>
                             <div className="info-content">
                                 <h3>Connection</h3>
-                                <p>Your audio is being sent through an active connection.</p>
+                                <p>
+                                    Your audio is being sent through an active
+                                    connection.
+                                </p>
                                 <div className="info-status">
-                                    <span className={`status-dot ${isStreaming ? "active" : "inactive"}`}></span>
-                                    <span>{isStreaming ? "Connected" : "Not Connected"}</span>
+                                    <span
+                                        className={`status-dot ${isStreaming ? "active" : "inactive"}`}
+                                    ></span>
+                                    <span>
+                                        {isStreaming
+                                            ? "Connected"
+                                            : "Not Connected"}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -497,44 +599,57 @@ function App() {
                             <div className="info-icon">⚡</div>
                             <div className="info-content">
                                 <h3>Performance</h3>
-                                <p>Smooth, real-time audio handling for clear call quality.</p>
+                                <p>
+                                    Smooth, real-time audio handling for clear
+                                    call quality.
+                                </p>
 
-                                {serverError && serverError.type === 'dependency-error' && (
-                                    <div className="error-banner">
-                                        <h4>⚠️ Setup Required</h4>
-                                        <p>{serverError.message}</p>
-                                        <p style={{ fontSize: '0.9em', color: '#ccc', marginTop: '10px' }}>
-                                            Some components needed for audio calls are missing.
-                                            Please reinstall Phonolytics to fix this issue.
-                                        </p>
-                                    </div>
-                                )}
+                                {serverError &&
+                                    serverError.type === "dependency-error" && (
+                                        <div className="error-banner">
+                                            <h4>⚠️ Setup Required</h4>
+                                            <p>{serverError.message}</p>
+                                            <p
+                                                style={{
+                                                    fontSize: "0.9em",
+                                                    color: "#ccc",
+                                                    marginTop: "10px",
+                                                }}
+                                            >
+                                                Some components needed for audio
+                                                calls are missing. Please
+                                                reinstall Phonolytics to fix
+                                                this issue.
+                                            </p>
+                                        </div>
+                                    )}
 
                                 <div className="info-status">
                                     <span
                                         className={`status-dot ${
-                                            serverError?.type === 'dependency-error'
+                                            serverError?.type ===
+                                            "dependency-error"
                                                 ? "error"
-                                                : serverStatus === 'stopped'
-                                                ? "error"
-                                                : isStreaming
-                                                ? "active"
-                                                : "ready"
+                                                : serverStatus === "stopped"
+                                                  ? "error"
+                                                  : isStreaming
+                                                    ? "active"
+                                                    : "ready"
                                         }`}
                                     ></span>
                                     <span>
-                                        {serverError?.type === 'dependency-error'
+                                        {serverError?.type ===
+                                        "dependency-error"
                                             ? "Setup Required"
-                                            : serverStatus === 'stopped'
-                                            ? "Connection Lost"
-                                            : isStreaming
-                                            ? "Active"
-                                            : "Ready"}
+                                            : serverStatus === "stopped"
+                                              ? "Connection Lost"
+                                              : isStreaming
+                                                ? "Active"
+                                                : "Ready"}
                                     </span>
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </section>
             </main>
