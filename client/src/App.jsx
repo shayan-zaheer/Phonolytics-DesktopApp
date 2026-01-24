@@ -374,7 +374,7 @@ function App() {
                 <div className="header-content">
                     <div className="logo">
                         <img
-                            src="./logo.png"
+                            src="/logo.png"
                             alt="Phonolytics"
                             className="logo-icon"
                         />
