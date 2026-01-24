@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
+import logo from "./assets/logo.png";
 
 function App() {
     const [isStreaming, setIsStreaming] = useState(false);
@@ -374,7 +375,7 @@ function App() {
                 <div className="header-content">
                     <div className="logo">
                         <img
-                            src="/logo.png"
+                            src={logo}
                             alt="Phonolytics"
                             className="logo-icon"
                         />
