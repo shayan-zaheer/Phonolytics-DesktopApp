@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
 import logo from "./assets/logo.png";
+import Login from "./Login";
+import { fetchWithAuth } from "./api";
 
 function App() {
+    const [authToken, setAuthToken] = useState(null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [isStreaming, setIsStreaming] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [audioLevels, setAudioLevels] = useState({ mic: 0, system: 0 });
@@ -10,8 +14,9 @@ function App() {
     const [serverError, setServerError] = useState(null);
     const [serverStatus, setServerStatus] = useState("unknown");
 
-    // Realtime Help (connects to the recording endpoint which has the realtime_help handler)
-    const HELP_WS_URL = "ws://127.0.0.1:8000/calls/recording/1/agent";
+    // Realtime Help WS URL (generated dynamically by backend on start up)
+    const [callId, setCallId] = useState(null);
+    const HELP_WS_URL = callId ? `ws://127.0.0.1:8000/calls/recording/${callId}/agent` : null;
     const [helpMessages, setHelpMessages] = useState([]);
     const [helpIsReplying, setHelpIsReplying] = useState(false);
     const [helpStatus, setHelpStatus] = useState("disconnected");
@@ -22,20 +27,37 @@ function App() {
     const helpExpectingReplyRef = useRef(false);
 
     const API_BASE = import.meta.env.VITE_API_BASE;
+    const BACKEND_API_BASE = import.meta.env.VITE_BACKEND_API_BASE || "http://127.0.0.1:8000";
 
     const startStreaming = useCallback(async () => {
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE}/start`, {
+            // Step 1: Create a Call record on the backend (links call to agent via JWT)
+            const backendResponse = await fetchWithAuth(`${BACKEND_API_BASE}/calls/start-recording`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({}),
+            });
+
+            if (!backendResponse.ok) {
+                console.error("Failed to create call record on backend");
+                return;
+            }
+
+            const backendData = await backendResponse.json();
+            const newCallId = String(backendData.call_id);
+
+            // Step 2: Start audio streaming on the local server, passing the backend call_id
+            const response = await fetchWithAuth(`${API_BASE}/start`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ call_id: newCallId }),
             });
 
             if (response.ok) {
+                setCallId(newCallId);
                 setIsStreaming(true);
             } else {
-                console.error("Failed to start call");
+                console.error("Failed to start call on local server");
             }
         } catch (error) {
             console.error("Failed to connect:", error);
@@ -47,12 +69,13 @@ function App() {
     const stopStreaming = useCallback(async () => {
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE}/stop`, {
+            const response = await fetchWithAuth(`${API_BASE}/stop`, {
                 method: "POST",
             });
 
             if (response.ok) {
                 setIsStreaming(false);
+                setCallId(null);
             }
         } catch (error) {
             console.error("Failed to end call:", error);
@@ -111,6 +134,8 @@ function App() {
     }, []);
 
     const ensureHelpSocket = useCallback(() => {
+        if (!HELP_WS_URL) return null;
+        
         const existing = helpWsRef.current;
         if (
             existing &&
@@ -242,15 +267,16 @@ function App() {
         };
 
         return ws;
-    }, [appendAssistantChunk, resetHelpIdleTimer]);
+    }, [appendAssistantChunk, resetHelpIdleTimer, HELP_WS_URL]);
 
     const requestRealtimeHelp = useCallback(() => {
-        // Replicate the Postman flow:
-        // connect to ws://127.0.0.1:8000/call/1/1/MIC
-        // then send {"event":"realtime_help"}
-        const ws = ensureHelpSocket();
+        if (!HELP_WS_URL) {
+             console.error("Cannot request help: No active call (callId is null)");
+             return;
+        }
 
-        // Don't show user messages - this is a teleprompter, not a chat
+        const ws = ensureHelpSocket();
+        if (!ws) return;
 
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ event: "realtime_help" }));
@@ -367,6 +393,64 @@ function App() {
         };
     }, []);
 
+    // Initial Auth Check
+    useEffect(() => {
+        const loadSecureToken = async () => {
+            let token = null;
+            if (window.electronAPI && window.electronAPI.getToken) {
+                try {
+                    const result = await window.electronAPI.getToken();
+                    if (result && result.success && result.token) {
+                        token = result.token;
+                    }
+                } catch (e) {
+                    console.error("Failed to load secure token", e);
+                }
+            } else {
+                token = localStorage.getItem("phonolytics_access_token");
+            }
+            setAuthToken(token);
+            setIsAuthLoading(false);
+        };
+        loadSecureToken();
+    }, []);
+
+    const handleLoginSuccess = async (token, user) => {
+        setAuthToken(token);
+        if (window.electronAPI && window.electronAPI.saveToken) {
+            await window.electronAPI.saveToken(token);
+        } else {
+            localStorage.setItem("phonolytics_access_token", token);
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await fetchWithAuth(`${BACKEND_API_BASE}/auth/logout`, { method: "POST" });
+        } catch (e) {
+            console.error("Logout request failed:", e);
+        }
+        setAuthToken(null);
+        if (window.electronAPI && window.electronAPI.deleteToken) {
+            await window.electronAPI.deleteToken();
+        } else {
+            localStorage.removeItem("phonolytics_access_token");
+        }
+    };
+
+    if (isAuthLoading) {
+        return (
+            <div className="app" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+                <div className="grid-background"></div>
+                <div style={{ color: 'var(--text-secondary)' }}>Loading secure environment...</div>
+            </div>
+        );
+    }
+
+    if (!authToken) {
+        return <Login onLoginSuccess={handleLoginSuccess} />;
+    }
+
     return (
         <div className="app">
             <div className="grid-background"></div>
@@ -403,6 +487,9 @@ function App() {
                                       : "Ready to Start"}
                             </span>
                         </div>
+                        <button className="btn btn-stop" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }} onClick={handleLogout}>
+                            Logout
+                        </button>
                     </div>
                 </div>
             </header>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron')
+const { app, BrowserWindow, shell, Menu, ipcMain, safeStorage } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
 const fs = require('fs')
@@ -192,6 +192,61 @@ ipcMain.handle('window-close', () => {
 ipcMain.handle('open-external', (event, url) => {
   shell.openExternal(url)
 })
+
+// Secure Token Storage using safeStorage
+const TOKEN_FILE_PATH = path.join(app.getPath('userData'), 'secure_auth_token.enc');
+
+ipcMain.handle('save-token', async (event, token) => {
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const encryptedToken = safeStorage.encryptString(token);
+      fs.writeFileSync(TOKEN_FILE_PATH, encryptedToken);
+      return { success: true };
+    } else {
+      // Fallback if encryption is not available on this OS
+      fs.writeFileSync(TOKEN_FILE_PATH, Buffer.from(token, 'utf-8'));
+      return { success: true };
+    }
+  } catch (error) {
+    console.error('Failed to save token:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-token', async () => {
+  try {
+    if (!fs.existsSync(TOKEN_FILE_PATH)) {
+      return { success: true, token: null };
+    }
+    const fileBuffer = fs.readFileSync(TOKEN_FILE_PATH);
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const decryptedToken = safeStorage.decryptString(fileBuffer);
+        return { success: true, token: decryptedToken };
+      } catch (err) {
+        // Might be unencrypted fallback
+        return { success: true, token: fileBuffer.toString('utf-8') };
+      }
+    } else {
+      return { success: true, token: fileBuffer.toString('utf-8') };
+    }
+  } catch (error) {
+    console.error('Failed to get token:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-token', async () => {
+  try {
+    if (fs.existsSync(TOKEN_FILE_PATH)) {
+      fs.unlinkSync(TOKEN_FILE_PATH);
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to delete token:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 // Function to poll connection status
 function startConnectionStatusPolling() {

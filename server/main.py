@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import pyaudiowpatch as pyaudio
 import uvicorn
+import uuid
 from streaming_utils import start_streaming, stop_streaming
 
 # ------------------------
@@ -150,10 +151,19 @@ def detailed_health():
         "streaming": state.get_streaming()
     }
 
+from pydantic import BaseModel as PydanticBaseModel
+
+class StartRequest(PydanticBaseModel):
+    call_id: str = None
+
 @app.post("/start")
-def api_start_streaming():
-    start_streaming()
-    return {"status": "started"}
+def api_start_streaming(request: StartRequest = None):
+    if request and request.call_id:
+        call_id = str(request.call_id)
+    else:
+        call_id = f"call_{uuid.uuid4().hex[:8]}"
+    start_streaming(call_id)
+    return {"status": "started", "call_id": call_id}
 
 @app.post("/stop")
 def api_stop_streaming():

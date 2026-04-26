@@ -23,7 +23,7 @@ CHUNK = 480                 # 30ms frames for stable connection
 FORMAT = pyaudio.paInt16    
 CHANNELS = 1                
 RATE = 16000               
-SERVER_WS_URL = "ws://127.0.0.1:8000/call/1/1/{}"
+SERVER_WS_URL = "ws://127.0.0.1:8000/call/{}/{}"
 
 # Buffer management
 MAX_BUFFER_SIZE = 5         
@@ -98,8 +98,8 @@ def convert_stereo_to_mono(stereo_data):
 # ------------------------
 # WEBSOCKET HANDLING
 # ------------------------
-def create_websocket_connection(tag):
-    ws_url = SERVER_WS_URL.format(tag)
+def create_websocket_connection(tag, call_id):
+    ws_url = SERVER_WS_URL.format(call_id, tag)
     ws = websocket.WebSocket()
     ws.settimeout(30)
     
@@ -205,7 +205,7 @@ def audio_capture_thread(device_index, tag):
     except Exception as e:
         logger.error(f"[{tag}] Error stopping stream: {e}")
 
-def network_send_thread(tag):
+def network_send_thread(tag, call_id):
     global is_streaming, websockets, audio_queues
     log_interval = 2
     last_log = 0
@@ -213,7 +213,7 @@ def network_send_thread(tag):
     
     # Retry loop for initial connection
     while is_streaming:
-        ws = create_websocket_connection(tag)
+        ws = create_websocket_connection(tag, call_id)
         if ws:
             break
             
@@ -277,7 +277,7 @@ def network_send_thread(tag):
 # ------------------------
 # STREAM CONTROL
 # ------------------------
-def start_streaming():
+def start_streaming(call_id):
     global is_streaming, stream_threads
     if is_streaming:
         return
@@ -295,7 +295,7 @@ def start_streaming():
             stream_threads.append(capture_thread)
             capture_thread.start()
             
-            send_thread = threading.Thread(target=network_send_thread, args=(tag,))
+            send_thread = threading.Thread(target=network_send_thread, args=(tag, call_id))
             send_thread.daemon = True
             stream_threads.append(send_thread)
             send_thread.start()

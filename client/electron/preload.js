@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog methods
   showMessageBox: (options) => ipcRenderer.invoke('show-message-box', options),
   
+  // Secure Token Storage
+  saveToken: (token) => ipcRenderer.invoke('save-token', token),
+  getToken: () => ipcRenderer.invoke('get-token'),
+  deleteToken: () => ipcRenderer.invoke('delete-token'),
+  
   // Menu events listeners
   onMenuStartRecording: (callback) => ipcRenderer.on('menu-start-recording', callback),
   onMenuStopRecording: (callback) => ipcRenderer.on('menu-stop-recording', callback),
