@@ -121,7 +121,7 @@ function createWindow() {
     },
     show: false,
     icon: path.join(__dirname, '../public/logo.ico'),
-    titleBarStyle: 'hidden',
+    titleBarStyle: 'default',
     titleBarOverlay: {
       color: '#1a1a1a',
       symbolColor: '#ffffff',
