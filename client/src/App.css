@@ -78,13 +78,11 @@ body {
     position: sticky;
     top: 0;
     z-index: 100;
-    -webkit-app-region: drag;
 }
 
 .header-content {
     width: 100%;
     padding: 1rem 2rem;
-    padding-right: 140px; /* Space for window controls */
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1101,13 +1099,12 @@ section:hover {
 
 /* Login Page Styles */
 .login-container {
-    min-height: 100vh;
+    min-height: calc(100vh - 32px);
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
     padding: 2rem;
-    -webkit-app-region: drag;
 }
 
 .login-card {

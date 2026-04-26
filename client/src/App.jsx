@@ -3,6 +3,7 @@ import "./App.css";
 import logo from "./assets/logo.png";
 import Login from "./Login";
 import { fetchWithAuth } from "./api";
+import TitleBar from "./components/TitleBar";
 
 function App() {
     const [authToken, setAuthToken] = useState(null);
@@ -440,19 +441,28 @@ function App() {
 
     if (isAuthLoading) {
         return (
-            <div className="app" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', WebkitAppRegion: 'drag' }}>
+            <div className="app">
+                <TitleBar />
                 <div className="grid-background"></div>
-                <div style={{ color: 'var(--text-secondary)' }}>Loading secure environment...</div>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 32px)', color: 'var(--text-secondary)' }}>
+                    Loading secure environment...
+                </div>
             </div>
         );
     }
 
     if (!authToken) {
-        return <Login onLoginSuccess={handleLoginSuccess} />;
+        return (
+            <div className="app">
+                <TitleBar />
+                <Login onLoginSuccess={handleLoginSuccess} />
+            </div>
+        );
     }
 
     return (
         <div className="app">
+            <TitleBar />
             <div className="grid-background"></div>
 
             <header className="header">

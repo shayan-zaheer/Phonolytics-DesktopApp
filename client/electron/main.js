@@ -120,13 +120,10 @@ function createWindow() {
       nodeIntegration: false
     },
     show: false,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#0f0f0f',
     icon: path.join(__dirname, '../public/logo.ico'),
-    titleBarStyle: 'default',
-    titleBarOverlay: {
-      color: '#1a1a1a',
-      symbolColor: '#ffffff',
-      height: 40
-    }
   })
 
   // Load the app
