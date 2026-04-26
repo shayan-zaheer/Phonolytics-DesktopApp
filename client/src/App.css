@@ -31,6 +31,11 @@
     padding: 0;
 }
 
+::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+}
+
 body {
     font-family: "Inter", sans-serif;
     background: var(--primary-bg);
