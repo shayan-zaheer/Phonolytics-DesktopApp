@@ -440,7 +440,7 @@ function App() {
 
     if (isAuthLoading) {
         return (
-            <div className="app" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+            <div className="app" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', WebkitAppRegion: 'drag' }}>
                 <div className="grid-background"></div>
                 <div style={{ color: 'var(--text-secondary)' }}>Loading secure environment...</div>
             </div>

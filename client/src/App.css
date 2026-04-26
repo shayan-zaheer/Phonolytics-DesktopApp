@@ -72,17 +72,19 @@ body {
 
 /* Header */
 .header {
-    background: rgba(26, 26, 26, 0.9);
+    background: #1a1a1a;
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 100;
+    -webkit-app-region: drag;
 }
 
 .header-content {
     width: 100%;
     padding: 1rem 2rem;
+    padding-right: 140px; /* Space for window controls */
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -92,6 +94,7 @@ body {
     display: flex;
     align-items: center;
     gap: 1rem;
+    -webkit-app-region: no-drag;
 }
 
 .logo-icon {
@@ -157,6 +160,7 @@ body {
     display: flex;
     align-items: center;
     gap: 2rem;
+    -webkit-app-region: no-drag;
 }
 
 .status-indicator {
@@ -1103,6 +1107,7 @@ section:hover {
     justify-content: center;
     position: relative;
     padding: 2rem;
+    -webkit-app-region: drag;
 }
 
 .login-card {
@@ -1116,6 +1121,7 @@ section:hover {
     text-align: center;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     animation: slideUp 0.6s ease-out;
+    -webkit-app-region: no-drag;
 }
 
 @keyframes slideUp {
