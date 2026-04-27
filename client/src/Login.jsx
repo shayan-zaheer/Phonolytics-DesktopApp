@@ -79,6 +79,16 @@ export default function Login({ onLoginSuccess }) {
              {isLoading ? 'Signing In...' : 'Sign In'}
            </button>
          </form>
+
+         <div className="login-footer">
+           <p>New to Phonolytics?</p>
+           <button 
+             className="btn-link-aesthetic"
+             onClick={() => window.electronAPI?.openExternal('https://www.phonolytics.com/')}
+           >
+             Explore our platform <span>→</span>
+           </button>
+         </div>
        </div>
     </div>
   );

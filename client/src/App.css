@@ -1212,3 +1212,48 @@ section:hover {
     margin-bottom: 1.5rem;
     animation: errorFadeIn 0.3s ease-out;
 }
+
+.login-footer {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.login-footer p {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.btn-link-aesthetic {
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    font-family: "Orbitron", monospace;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+}
+
+.btn-link-aesthetic span {
+    transition: transform 0.3s ease;
+}
+
+.btn-link-aesthetic:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.btn-link-aesthetic:hover span {
+    transform: translateX(5px);
+}
