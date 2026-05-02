@@ -24,6 +24,7 @@
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "setup-python": "powershell -ExecutionPolicy Bypass -File setup-python-runtime.ps1",
     "electron-build": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --config.compression=store --config.nsis.oneClick=false --config.nsis.allowToChangeInstallationDirectory=true",
+    "electron-build-mac": "npm run build && electron-builder --mac",
     "electron-dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --publish=never --config.compression=store",
     "build:portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --config.compression=store --config.forceCodeSigning=false"
   },
@@ -62,9 +63,7 @@
       {
         "from": "resources/server/",
         "to": "server/",
-        "filter": [
-          "server.exe"
-        ]
+        "filter": ["server.exe"]
       }
     ],
     "extraMetadata": {
@@ -74,15 +73,11 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         },
         {
           "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "icon": "public/logo.ico",
@@ -90,7 +85,29 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/logo.ico"
+      "icon": "public/logo.icns"
+    },
+    "dmg": {
+      "background": "public/logo.icns",
+      "icon": "public/logo.icns",
+      "iconSize": 128,
+      "window": {
+        "width": 660,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 180,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 480,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     },
     "linux": {
       "target": "AppImage",
