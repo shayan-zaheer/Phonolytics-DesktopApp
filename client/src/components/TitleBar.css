@@ -1,0 +1,87 @@
+.titlebar {
+    height: 32px;
+    background-color: #0f0f0f;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    user-select: none;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.titlebar-drag-region {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    -webkit-app-region: drag;
+    z-index: -1;
+}
+
+.titlebar-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0 0 0 12px;
+    height: 100%;
+}
+
+.titlebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #e0e0e0;
+    pointer-events: none;
+}
+
+.titlebar-logo img {
+    height: 16px;
+    width: 16px;
+}
+
+.titlebar-controls {
+    display: flex;
+    height: 100%;
+    -webkit-app-region: no-drag;
+}
+
+.control-btn {
+    width: 46px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #a0a0a0;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.control-btn:hover {
+    background-color: #2a2a2a;
+    color: #ffffff;
+}
+
+.control-btn.close:hover {
+    background-color: #e81123;
+    color: #ffffff;
+}
+
+.control-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Adjust the app container to make space for the titlebar */
+.app {
+    padding-top: 32px !important;
+}
