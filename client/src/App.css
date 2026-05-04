@@ -312,6 +312,49 @@ section:hover {
     font-weight: 600;
 }
 
+/* Campaign Selection */
+.campaign-row {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.campaign-row label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.campaign-select {
+    width: 100%;
+    max-width: 520px;
+    padding: 0.85rem 1rem;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.92);
+    outline: none;
+}
+
+.campaign-select:disabled {
+    opacity: 0.65;
+}
+
+.campaign-hint {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.9rem;
+}
+
+.campaign-required {
+    color: rgba(255, 210, 120, 0.95);
+    font-size: 0.9rem;
+}
+
+.campaign-error {
+    color: rgba(255, 165, 165, 0.95);
+    font-size: 0.9rem;
+}
+
 /* Control Buttons */
 .control-buttons {
     display: flex;
@@ -1101,6 +1144,174 @@ section:hover {
         opacity: 0.9;
     }
 }
+
+/* ---------------------------------
+   Competitor Intelligence
+   --------------------------------- */
+
+.ci-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 0.9rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+}
+
+.ci-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.ci-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.ci-count {
+    font-weight: 600;
+    opacity: 0.75;
+    font-size: 0.9rem;
+}
+
+.ci-empty {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.95rem;
+    padding: 0.75rem 0;
+}
+
+.ci-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ci-card {
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    overflow: hidden;
+}
+
+.ci-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.9rem;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ci-card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.ci-badge {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.ci-card-actions {
+    display: inline-flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.ci-action {
+    padding: 0.35rem 0.6rem;
+    border-radius: 0.65rem;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.92);
+    cursor: pointer;
+}
+
+.ci-action:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.26);
+}
+
+.ci-card-body {
+    padding: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.ci-headline {
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.ci-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.86);
+    margin: 0.35rem 0 0.1rem;
+}
+
+.ci-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: rgba(255, 255, 255, 0.9);
+    animation: ciSpin 0.9s linear infinite;
+    display: inline-block;
+}
+
+@keyframes ciSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ci-detected {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.95rem;
+}
+
+.ci-error {
+    color: rgba(255, 165, 165, 0.95);
+    font-size: 0.95rem;
+}
+
+.ci-block {
+    margin-top: 0.75rem;
+}
+
+.ci-block-title {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    margin-bottom: 0.35rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ci-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.ci-pricing-text {
+    font-size: 0.95rem;
+    opacity: 0.95;
+}
+
 
 /* Login Page Styles */
 .login-container {
