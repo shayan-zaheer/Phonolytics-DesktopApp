@@ -28,6 +28,11 @@ export default function Login({ onLoginSuccess }) {
 
       const data = await response.json();
       
+      // Ensure that only sales agents can log into the desktop app
+      if (data.user && data.user.role !== 'sales_agent') {
+        throw new Error('Access denied. Only sales agents can log into the desktop app.');
+      }
+
       // Usually, the access token is returned here. We pass it to the success handler.
       if (data.access_token) {
         onLoginSuccess(data.access_token, data.user);

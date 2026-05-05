@@ -780,7 +780,7 @@ function App() {
 
                         {campaignsStatus === "loading" && (
                             <div className="campaign-hint">
-                                Loading campaignsâ€¦
+                                Loading campaigns...
                             </div>
                         )}
                         {campaignsStatus === "error" && (
@@ -1002,10 +1002,10 @@ function App() {
                                                                             Help
                                                                         </strong>
                                                                         . Meanwhile
-                                                                        weâ€™re
+                                                                        we're
                                                                         fetching
                                                                         competitor
-                                                                        intelâ€¦
+                                                                        intel...
                                                                     </span>
                                                                 </div>
                                                             )}
@@ -1025,10 +1025,10 @@ function App() {
                                                                         Get Help
                                                                     </strong>
                                                                     . Meanwhile
-                                                                    weâ€™re
+                                                                    we're
                                                                     fetching
                                                                     competitor
-                                                                    intelâ€¦
+                                                                    intel...
                                                                 </div>
                                                             )}
 

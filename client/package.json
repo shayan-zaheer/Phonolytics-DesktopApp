@@ -63,7 +63,9 @@
       {
         "from": "resources/server/",
         "to": "server/",
-        "filter": ["server.exe"]
+        "filter": [
+          "server.exe"
+        ]
       }
     ],
     "extraMetadata": {
@@ -73,11 +75,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/logo.ico",
