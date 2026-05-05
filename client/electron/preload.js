@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   close: () => ipcRenderer.invoke('window-close'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // WS diagnostics
+  appendWsLog: (entry) => ipcRenderer.invoke('ws-log-append', entry),
   
   // Platform info
   platform: process.platform

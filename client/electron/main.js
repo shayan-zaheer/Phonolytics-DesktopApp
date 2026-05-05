@@ -10,6 +10,30 @@ let serverProcess = null
 let connectionStatusPollInterval = null
 let lastConnectionStatus = null
 
+function registerWsLogHandler() {
+  if (registerWsLogHandler._registered) return
+  registerWsLogHandler._registered = true
+
+  try {
+    const wsLogPath = path.join(process.cwd(), 'ws-events.jsonl')
+    console.log('WS log path:', wsLogPath)
+  } catch (e) {
+    console.warn('WS log path unavailable yet:', e?.message || e)
+  }
+
+  ipcMain.handle('ws-log-append', async (event, entry) => {
+    try {
+      const wsLogPath = path.join(process.cwd(), 'ws-events.jsonl')
+      const line = JSON.stringify(entry) + '\n'
+      await fs.promises.appendFile(wsLogPath, line, { encoding: 'utf8' })
+      return { success: true, path: wsLogPath }
+    } catch (error) {
+      console.error('Failed to append WS log:', error)
+      return { success: false, error: error.message }
+    }
+  })
+}
+
 // API Configuration for local server
 const API_CONFIG = {
   BASE_URL: 'http://localhost:8000',
@@ -400,6 +424,8 @@ function createMenu() {
 }
 
 app.whenReady().then(async () => {
+  registerWsLogHandler()
+
   // Start the server process first
   startServerProcess()
   

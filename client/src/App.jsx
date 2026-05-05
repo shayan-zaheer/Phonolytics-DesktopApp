@@ -27,16 +27,29 @@ function App() {
     const helpScrollRef = useRef(null);
     const helpExpectingReplyRef = useRef(false);
 
+    const [competitorIntelByCompetitor, setCompetitorIntelByCompetitor] =
+        useState({});
+
+    const [campaigns, setCampaigns] = useState([]);
+    const [campaignsStatus, setCampaignsStatus] = useState("idle");
+    const [campaignsError, setCampaignsError] = useState(null);
+    const [selectedCampaignId, setSelectedCampaignId] = useState("");
+
     const API_BASE = import.meta.env.VITE_API_BASE;
     const BACKEND_API_BASE = import.meta.env.VITE_BACKEND_API_BASE || "http://127.0.0.1:8000";
 
     const startStreaming = useCallback(async () => {
+        if (!selectedCampaignId) {
+            console.error("Cannot start call: no campaign selected");
+            return;
+        }
         setIsLoading(true);
         try {
             // Step 1: Create a Call record on the backend (links call to agent via JWT)
             const backendResponse = await fetchWithAuth(`${BACKEND_API_BASE}/calls/start-recording`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ campaign_id: Number(selectedCampaignId) }),
             });
 
             if (!backendResponse.ok) {
@@ -65,7 +78,7 @@ function App() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [selectedCampaignId, BACKEND_API_BASE, API_BASE]);
 
     const stopStreaming = useCallback(async () => {
         setIsLoading(true);
@@ -132,6 +145,69 @@ function App() {
         helpIdleTimerRef.current = setTimeout(() => {
             setHelpIsReplying(false);
         }, 1200);
+    }, [API_BASE]);
+
+    const upsertCompetitorIntel = useCallback((payload) => {
+        if (!payload || typeof payload !== "object") return;
+
+        const competitor =
+            typeof payload.competitor === "string"
+                ? payload.competitor.trim()
+                : "";
+        if (!competitor) return;
+
+        setCompetitorIntelByCompetitor((prev) => {
+            const prevEntry = prev[competitor] || {
+                payload: null,
+                lastUpdatedAt: 0,
+                collapsed: false,
+                dismissed: false,
+                isLoading: false,
+            };
+
+            if (prevEntry.dismissed) return prev;
+
+            const status =
+                typeof payload.status === "string" ? payload.status : null;
+            const isLoading =
+                status === "loading"
+                    ? true
+                    : status === "ready" || status === "error"
+                      ? false
+                      : prevEntry.isLoading;
+
+            return {
+                ...prev,
+                [competitor]: {
+                    ...prevEntry,
+                    payload,
+                    lastUpdatedAt: Date.now(),
+                    isLoading,
+                },
+            };
+        });
+    }, []);
+
+    const toggleCompetitorIntelCollapsed = useCallback((competitor) => {
+        setCompetitorIntelByCompetitor((prev) => {
+            const entry = prev[competitor];
+            if (!entry) return prev;
+            return {
+                ...prev,
+                [competitor]: { ...entry, collapsed: !entry.collapsed },
+            };
+        });
+    }, []);
+
+    const dismissCompetitorIntel = useCallback((competitor) => {
+        setCompetitorIntelByCompetitor((prev) => {
+            const entry = prev[competitor];
+            if (!entry) return prev;
+            return {
+                ...prev,
+                [competitor]: { ...entry, dismissed: true },
+            };
+        });
     }, []);
 
     const ensureHelpSocket = useCallback(() => {
@@ -192,9 +268,43 @@ function App() {
                 data = raw;
             }
 
+            try {
+                window.electronAPI?.appendWsLog?.({
+                    ts: new Date().toISOString(),
+                    call_id: callId,
+                    url: HELP_WS_URL,
+                    raw:
+                        typeof raw === "string"
+                            ? raw
+                            : raw === null || raw === undefined
+                              ? null
+                              : String(raw),
+                    parsed_type:
+                        data && typeof data === "object"
+                            ? data.type || data.event || null
+                            : null,
+                });
+            } catch {
+                // ignore
+            }
+
             // Only render realtime-help responses. Ignore other traffic on the same socket.
             if (data && typeof data === "object") {
                 const msgType = data.type || data.event;
+
+                if (msgType === "ci_debug") {
+                    console.log("[ci_debug]", data);
+                    return;
+                }
+
+                if (msgType === "competitor_intel") {
+                    const payload =
+                        data && typeof data.data === "object" && data.data
+                            ? data.data
+                            : data;
+                    upsertCompetitorIntel(payload);
+                    return;
+                }
 
                 // Ignore obvious non-help messages.
                 if (
@@ -268,7 +378,13 @@ function App() {
         };
 
         return ws;
-    }, [appendAssistantChunk, resetHelpIdleTimer, HELP_WS_URL]);
+    }, [
+        appendAssistantChunk,
+        resetHelpIdleTimer,
+        HELP_WS_URL,
+        upsertCompetitorIntel,
+        callId,
+    ]);
 
     const requestRealtimeHelp = useCallback(() => {
         if (!HELP_WS_URL) {
@@ -292,6 +408,23 @@ function App() {
             helpExpectingReplyRef.current = true;
         }
     }, [ensureHelpSocket]);
+
+    useEffect(() => {
+        if (!HELP_WS_URL) {
+            try {
+                helpWsRef.current?.close();
+            } catch {
+                // ignore
+            }
+            helpWsRef.current = null;
+            setHelpStatus("disconnected");
+            setHelpIsReplying(false);
+            helpExpectingReplyRef.current = false;
+            return;
+        }
+
+        ensureHelpSocket();
+    }, [HELP_WS_URL, ensureHelpSocket]);
 
     useEffect(() => {
         setIsElectron(window.electronAPI !== undefined);
@@ -382,6 +515,11 @@ function App() {
     }, [helpMessages, helpIsReplying]);
 
     useEffect(() => {
+        if (callId) return;
+        setCompetitorIntelByCompetitor({});
+    }, [callId]);
+
+    useEffect(() => {
         return () => {
             if (helpIdleTimerRef.current) {
                 clearTimeout(helpIdleTimerRef.current);
@@ -432,12 +570,85 @@ function App() {
             console.error("Logout request failed:", e);
         }
         setAuthToken(null);
+        setCampaigns([]);
+        setCampaignsStatus("idle");
+        setCampaignsError(null);
+        setSelectedCampaignId("");
         if (window.electronAPI && window.electronAPI.deleteToken) {
             await window.electronAPI.deleteToken();
         } else {
             localStorage.removeItem("phonolytics_access_token");
         }
     };
+
+    // Campaign list (mandatory selection before starting a call)
+    useEffect(() => {
+        if (!authToken) {
+            setCampaigns([]);
+            setCampaignsStatus("idle");
+            setCampaignsError(null);
+            setSelectedCampaignId("");
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadCampaigns = async () => {
+            setCampaignsStatus("loading");
+            setCampaignsError(null);
+
+            try {
+                const res = await fetchWithAuth(`${BACKEND_API_BASE}/campaigns`, {
+                    method: "GET",
+                    headers: { "Content-Type": "application/json" },
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch campaigns (${res.status})`);
+                }
+
+                const json = await res.json();
+                const list = Array.isArray(json)
+                    ? json
+                    : Array.isArray(json?.campaigns)
+                      ? json.campaigns
+                      : [];
+
+                const normalized = list
+                    .map((c) => {
+                        const id =
+                            c?.id ?? c?.campaign_id ?? c?.campaignId ?? null;
+                        const name =
+                            c?.name ?? c?.campaign_name ?? c?.title ?? null;
+                        if (id === null || id === undefined) return null;
+                        return {
+                            id: String(id),
+                            name: name ? String(name) : `Campaign ${id}`,
+                        };
+                    })
+                    .filter(Boolean);
+
+                if (cancelled) return;
+                setCampaigns(normalized);
+                setCampaignsStatus("ready");
+
+                // Auto-select if backend returns exactly one campaign.
+                if (normalized.length === 1) {
+                    setSelectedCampaignId(normalized[0].id);
+                }
+            } catch (e) {
+                if (cancelled) return;
+                setCampaigns([]);
+                setCampaignsStatus("error");
+                setCampaignsError(e?.message || "Failed to load campaigns");
+            }
+        };
+
+        loadCampaigns();
+        return () => {
+            cancelled = true;
+        };
+    }, [authToken, BACKEND_API_BASE]);
 
     if (isAuthLoading) {
         return (
@@ -459,6 +670,10 @@ function App() {
             </div>
         );
     }
+
+    const competitorIntelCards = Object.entries(competitorIntelByCompetitor)
+        .filter(([, entry]) => entry && !entry.dismissed)
+        .sort((a, b) => (b[1].lastUpdatedAt || 0) - (a[1].lastUpdatedAt || 0));
 
     return (
         <div className="app">
@@ -542,13 +757,57 @@ function App() {
                         </div>
                     </div>
 
+                    <div className="campaign-row">
+                        <label htmlFor="campaignSelect">Campaign</label>
+                        <select
+                            id="campaignSelect"
+                            className="campaign-select"
+                            value={selectedCampaignId}
+                            onChange={(e) =>
+                                setSelectedCampaignId(e.target.value)
+                            }
+                            disabled={campaignsStatus !== "ready"}
+                        >
+                            <option value="">
+                                Select a campaign (required)
+                            </option>
+                            {campaigns.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
+
+                        {campaignsStatus === "loading" && (
+                            <div className="campaign-hint">
+                                Loading campaignsâ€¦
+                            </div>
+                        )}
+                        {campaignsStatus === "error" && (
+                            <div className="campaign-error">
+                                Failed to load campaigns: {campaignsError}
+                            </div>
+                        )}
+                        {campaignsStatus === "ready" &&
+                            !selectedCampaignId && (
+                                <div className="campaign-required">
+                                    Select a campaign to start a call.
+                                </div>
+                            )}
+                    </div>
+
                     <div className="control-buttons">
                         <button
                             className={`btn ${isStreaming ? "btn-stop" : "btn-start"}`}
                             onClick={
                                 isStreaming ? stopStreaming : startStreaming
                             }
-                            disabled={isLoading}
+                            disabled={
+                                isLoading ||
+                                (!isStreaming &&
+                                    (campaignsStatus !== "ready" ||
+                                        !selectedCampaignId))
+                            }
                         >
                             <span className="btn-icon">
                                 {isLoading ? "⚡" : isStreaming ? "⏹" : "▶"}
@@ -626,6 +885,232 @@ function App() {
                                             ></span>
                                         </span>
                                     </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="ci-section">
+                            <div className="ci-header">
+                                <h3>
+                                    Competitor Intelligence{" "}
+                                    <span className="ci-count">
+                                        ({competitorIntelCards.length})
+                                    </span>
+                                </h3>
+                            </div>
+
+                            {competitorIntelCards.length === 0 ? (
+                                <div className="ci-empty">
+                                    When customer mentions your competitors,
+                                    cards will appear here.
+                                </div>
+                            ) : (
+                                <div className="ci-cards">
+                                    {competitorIntelCards.map(
+                                        ([competitor, entry]) => {
+                                            const payload = entry.payload || {};
+                                            const status =
+                                                typeof payload.status ===
+                                                "string"
+                                                    ? payload.status
+                                                    : "detected";
+                                            const headline =
+                                                typeof payload.headline ===
+                                                    "string" && payload.headline
+                                                    ? payload.headline
+                                                    : "Competitor Mentioned";
+                                            const talkingPoints = Array.isArray(
+                                                payload.talking_points,
+                                            )
+                                                ? payload.talking_points
+                                                : [];
+                                            const questions = Array.isArray(
+                                                payload.questions,
+                                            )
+                                                ? payload.questions
+                                                : [];
+                                            const pricingInsight =
+                                                typeof payload.pricing_insight ===
+                                                "string"
+                                                    ? payload.pricing_insight
+                                                    : null;
+
+                                            return (
+                                                <div
+                                                    key={competitor}
+                                                    className={`ci-card ci-${status}`}
+                                                >
+                                                    <div className="ci-card-header">
+                                                        <div className="ci-card-title">
+                                                            {competitor}
+                                                            {payload.tavily_enriched ===
+                                                                true && (
+                                                                <span className="ci-badge">
+                                                                    Insights
+                                                                    available
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="ci-card-actions">
+                                                            <button
+                                                                className="ci-action"
+                                                                onClick={() =>
+                                                                    toggleCompetitorIntelCollapsed(
+                                                                        competitor,
+                                                                    )
+                                                                }
+                                                            >
+                                                                {entry.collapsed
+                                                                    ? "Expand"
+                                                                    : "Collapse"}
+                                                            </button>
+                                                            <button
+                                                                className="ci-action"
+                                                                onClick={() =>
+                                                                    dismissCompetitorIntel(
+                                                                        competitor,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Dismiss
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {!entry.collapsed && (
+                                                        <div className="ci-card-body">
+                                                            <div className="ci-headline">
+                                                                {headline}
+                                                            </div>
+
+                                                            {status ===
+                                                                "loading" && (
+                                                                <div className="ci-loading">
+                                                                    <span className="ci-spinner" />
+                                                                    <span>
+                                                                        Competitor
+                                                                        mention
+                                                                        detected:
+                                                                        {" "}
+                                                                        {competitor}
+                                                                        . For
+                                                                        realtime
+                                                                        help,
+                                                                        click{" "}
+                                                                        <strong>
+                                                                            Get
+                                                                            Help
+                                                                        </strong>
+                                                                        . Meanwhile
+                                                                        weâ€™re
+                                                                        fetching
+                                                                        competitor
+                                                                        intelâ€¦
+                                                                    </span>
+                                                                </div>
+                                                            )}
+
+                                                            {status ===
+                                                                "detected" && (
+                                                                <div className="ci-detected">
+                                                                    Competitor
+                                                                    mention
+                                                                    detected:
+                                                                    {" "}
+                                                                    {competitor}
+                                                                    . For
+                                                                    realtime
+                                                                    help, click{" "}
+                                                                    <strong>
+                                                                        Get Help
+                                                                    </strong>
+                                                                    . Meanwhile
+                                                                    weâ€™re
+                                                                    fetching
+                                                                    competitor
+                                                                    intelâ€¦
+                                                                </div>
+                                                            )}
+
+                                                            {status ===
+                                                                "error" && (
+                                                                <div className="ci-error">
+                                                                    Could not
+                                                                    generate
+                                                                    competitor
+                                                                    intel.
+                                                                </div>
+                                                            )}
+
+                                                            {status ===
+                                                                "ready" && (
+                                                                <>
+                                                                    {talkingPoints.length >
+                                                                        0 && (
+                                                                        <div className="ci-block">
+                                                                            <div className="ci-block-title">
+                                                                                Talking
+                                                                                points
+                                                                            </div>
+                                                                            <ul className="ci-list">
+                                                                                {talkingPoints.map(
+                                                                                    (
+                                                                                        item,
+                                                                                        idx,
+                                                                                    ) => (
+                                                                                        <li
+                                                                                            key={`${competitor}-tp-${idx}`}
+                                                                                        >
+                                                                                            {item}
+                                                                                        </li>
+                                                                                    ),
+                                                                                )}
+                                                                            </ul>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {questions.length >
+                                                                        0 && (
+                                                                        <div className="ci-block">
+                                                                            <div className="ci-block-title">
+                                                                                Questions
+                                                                            </div>
+                                                                            <ul className="ci-list">
+                                                                                {questions.map(
+                                                                                    (
+                                                                                        item,
+                                                                                        idx,
+                                                                                    ) => (
+                                                                                        <li
+                                                                                            key={`${competitor}-q-${idx}`}
+                                                                                        >
+                                                                                            {item}
+                                                                                        </li>
+                                                                                    ),
+                                                                                )}
+                                                                            </ul>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {pricingInsight && (
+                                                                        <div className="ci-block ci-pricing">
+                                                                            <div className="ci-block-title">
+                                                                                Competitor
+                                                                                insight
+                                                                            </div>
+                                                                            <div className="ci-pricing-text">
+                                                                                {pricingInsight}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        },
+                                    )}
                                 </div>
                             )}
                         </div>
